@@ -5,7 +5,8 @@ import time
 from ai_clients import nanobana_client, reve_client
 from database import update_job_status, update_product_image_url
 from logging_config import logger
-from storage import resolve_product_image, upload_processed_image
+from storage import resolve_product_image, upload_processed_image, upload_file_to_storage
+from config import settings
 
 
 # ---------------------------------------------------------------------------
@@ -39,12 +40,20 @@ async def process_product_image(product: dict) -> str:
     logger.info("Step 2/4 — removing background (Reve)", extra={"product_id": product_id})
     reve_output = await reve_client.remove_background(image_bytes)
 
+    # 2.1 Nanobana requires a public URL for the background-removed image.
+    # We upload it to a temporary path to keep the processed folder clean.
+    reve_url = upload_file_to_storage(
+        reve_output,
+        settings.PROCESSED_BUCKET_NAME,
+        f"products/temp/reve_{product_id}.png"
+    )
+
     # 3. Enhancement (Nanobana) ----------------------------------------------
     logger.info("Step 3/4 — enhancing image (Nanobana)", extra={"product_id": product_id})
-    final_image = await nanobana_client.enhance_image(reve_output)
+    final_image = await nanobana_client.enhance_image(reve_url)
 
     # 4. Upload processed result ---------------------------------------------
-    logger.info("Step 4/4 — uploading processed image", extra={"product_id": product_id})
+    logger.info("Step 4/4 — uploading FINAL processed image", extra={"product_id": product_id})
     processed_url = upload_processed_image(final_image, product_id)
 
     # 5. Persist processed URL back to products table ------------------------
@@ -82,10 +91,17 @@ async def process_job(job: dict) -> None:
         logger.info("Step 2/4 — removing background (Reve)", extra={"job_id": job_id})
         reve_output = await reve_client.remove_background(image_bytes)
 
-        logger.info("Step 3/4 — enhancing image (Nanobana)", extra={"job_id": job_id})
-        final_image = await nanobana_client.enhance_image(reve_output)
+        # Upload intermediate for Nanobana
+        reve_url = upload_file_to_storage(
+            reve_output,
+            settings.PROCESSED_BUCKET_NAME,
+            f"products/temp/reve_{job_id}.png"
+        )
 
-        logger.info("Step 4/4 — uploading processed image", extra={"job_id": job_id})
+        logger.info("Step 3/4 — enhancing image (Nanobana)", extra={"job_id": job_id})
+        final_image = await nanobana_client.enhance_image(reve_url)
+
+        logger.info("Step 4/4 — uploading FINAL processed image", extra={"job_id": job_id})
         processed_url = upload_processed_image(final_image, job_id)
 
         elapsed_ms = int((time.time() - start) * 1000)

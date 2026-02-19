@@ -149,32 +149,29 @@ def upload_processed_image(file_content: bytes, product_id: str) -> str:
 
     Returns the public URL of the uploaded object.
     """
-    path = f"{settings.PROCESSED_STORAGE_FOLDER}/{product_id}.png"
+    return upload_file_to_storage(
+        file_content, 
+        settings.PROCESSED_BUCKET_NAME, 
+        f"{settings.PROCESSED_STORAGE_FOLDER}/{product_id}.png",
+        content_type="image/png"
+    )
 
+
+def upload_file_to_storage(content: bytes, bucket: str, path: str, content_type: str = "image/png") -> str:
+    """Generic helper to upload bytes to a bucket and return the public URL."""
     try:
-        _ensure_bucket(settings.PROCESSED_BUCKET_NAME)
-        supabase.storage.from_(settings.PROCESSED_BUCKET_NAME).upload(
+        _ensure_bucket(bucket)
+        supabase.storage.from_(bucket).upload(
             path=path,
-            file=file_content,
-            file_options={"content-type": "image/png", "upsert": "true"},
+            file=content,
+            file_options={"content-type": content_type, "x-upsert": "true"},
         )
 
-        public_url = (
-            f"{settings.SUPABASE_URL}/storage/v1/object/public/"
-            f"{settings.PROCESSED_BUCKET_NAME}/{path}"
-        )
-
-        logger.info(
-            f"Uploaded processed image → {public_url}",
-            extra={"product_id": product_id},
-        )
+        public_url = f"{settings.SUPABASE_URL}/storage/v1/object/public/{bucket}/{path}"
+        logger.info(f"Uploaded to storage: {public_url}")
         return public_url
-
     except Exception as exc:
-        logger.error(
-            f"Failed to upload processed image for product {product_id}: {exc}",
-            extra={"product_id": product_id},
-        )
+        logger.error(f"Failed to upload to storage {bucket}/{path}: {exc}")
         raise
 
 
