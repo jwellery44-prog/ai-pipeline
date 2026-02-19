@@ -22,9 +22,14 @@ class Settings(BaseSettings):
     MAX_RETRIES: int = 3
     PROCESSING_TIMEOUT_SECONDS: int = 300
     
+    # Database Config
+    DB_TABLE_NAME: str = "images"            # override via DB_TABLE_NAME in .env
+
     # Storage Config
-    RAW_BUCKET_NAME: str = "raw_images"
-    PROCESSED_BUCKET_NAME: str = "processed_images"
+    RAW_BUCKET_NAME: str = "plant-images"    # Supabase bucket holding raw product images
+    RAW_STORAGE_FOLDER: str = "products"     # Folder inside raw bucket
+    PROCESSED_BUCKET_NAME: str = "plant-images"
+    PROCESSED_STORAGE_FOLDER: str = "products/processed"  # Output folder
     ALLOWED_MIME_TYPES: list[str] = ["image/jpeg", "image/png", "image/webp"]
     MAX_FILE_SIZE_BYTES: int = 10 * 1024 * 1024  # 10MB
 
