@@ -76,7 +76,7 @@ async def health_check():
 async def process_upload(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(..., description="Raw jewellery image (JPEG / PNG / WebP, max 10 MB)"),
-    title: str = "",
+    title: str = "Untitled",
     jewellery_type: str = "",
 ):
     """
