@@ -4,15 +4,11 @@ import mimetypes
 from urllib.parse import urlparse
 
 import httpx
-from supabase import Client, create_client
-
 from config import settings
 from logging_config import logger
 
-supabase: Client = create_client(
-    settings.SUPABASE_URL,
-    settings.SUPABASE_SERVICE_ROLE_KEY,
-)
+# Import the lazy supabase getter to avoid constructing the client at import-time
+from database import get_supabase
 
 
 def _ensure_bucket(bucket_name: str) -> None:
@@ -21,9 +17,10 @@ def _ensure_bucket(bucket_name: str) -> None:
     Safe to call on every upload — it is a no-op when the bucket exists.
     """
     try:
-        existing = [b.name for b in supabase.storage.list_buckets()]
+        sb = get_supabase()
+        existing = [b.name for b in sb.storage.list_buckets()]
         if bucket_name not in existing:
-            supabase.storage.create_bucket(bucket_name, options={"public": True})
+            sb.storage.create_bucket(bucket_name, options={"public": True})
             logger.info(f"Created storage bucket '{bucket_name}'")
     except Exception as exc:
         # Non-fatal: log and let the subsequent upload surface the real error.
@@ -96,7 +93,8 @@ def download_from_storage(bucket: str, path: str) -> bytes:
     Returns raw bytes of the file.
     """
     try:
-        data = supabase.storage.from_(bucket).download(path)
+        sb = get_supabase()
+        data = sb.storage.from_(bucket).download(path)
         logger.info(f"Downloaded {path!r} from bucket {bucket!r} ({len(data)} bytes)")
         return data
     except Exception as exc:
@@ -161,7 +159,8 @@ def upload_file_to_storage(content: bytes, bucket: str, path: str, content_type:
     """Generic helper to upload bytes to a bucket and return the public URL."""
     try:
         _ensure_bucket(bucket)
-        supabase.storage.from_(bucket).upload(
+        sb = get_supabase()
+        sb.storage.from_(bucket).upload(
             path=path,
             file=content,
             file_options={"content-type": content_type, "x-upsert": "true"},
@@ -190,7 +189,8 @@ def upload_raw_image(file_content: bytes, product_id: str, content_type: str = "
 
     try:
         _ensure_bucket(settings.RAW_BUCKET_NAME)
-        supabase.storage.from_(settings.RAW_BUCKET_NAME).upload(
+        sb = get_supabase()
+        sb.storage.from_(settings.RAW_BUCKET_NAME).upload(
             path=path,
             file=file_content,
             file_options={"content-type": content_type, "upsert": "true"},
