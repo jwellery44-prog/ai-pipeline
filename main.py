@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 import asyncio
 
 from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 
 from config import settings
 from database import create_product, fetch_job_by_id, update_product_image_url
@@ -23,6 +24,43 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "https://ai-pipeline-frontend.vercel.app",
+        # "https://yourdomain.com",  # add production origin(s) here
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.middleware("http")
+async def ensure_cors_headers(request, call_next):
+    """Ensure the Access-Control-Allow-Origin header is present on all responses.
+
+    This is a safety-net to ensure browsers don't block error responses when
+    the CORS middleware might not attach headers (for example during
+    unexpected exceptions). It complements the standard CORSMiddleware.
+    """
+    try:
+        response = await call_next(request)
+    except Exception as exc:
+        # Return a minimal JSON 500 response so the browser gets a body.
+        from fastapi.responses import JSONResponse
+
+        response = JSONResponse({"detail": "Internal Server Error"}, status_code=500)
+
+    # If the header isn't already set by CORSMiddleware, set it to the
+    # allowed frontend origin so the browser can read the response.
+    if "Access-Control-Allow-Origin" not in response.headers:
+        response.headers["Access-Control-Allow-Origin"] = "https://ai-pipeline-frontend.vercel.app"
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+
+    return response
 
 
 @app.get("/health")
