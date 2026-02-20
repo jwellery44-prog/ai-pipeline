@@ -1,0 +1,88 @@
+# ── Environment & Secrets
+.env
+.env.*
+!.env.example
+secrets.json
+*.pem
+*.key
+
+# ── Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+pip-wheel-metadata/
+wheels/
+
+# ── Virtual Environments
+.venv/
+venv/
+env/
+ENV/
+.virtualenv/
+__pypackages__/
+
+# ── Logs
+logs/
+*.log
+
+# ── Pytest / Coverage
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# ── Type Checking
+.mypy_cache/
+.pytype/
+.pyre/
+
+# ── IDEs
+.vscode/
+.idea/
+*.code-workspace
+*.sublime-workspace
+*.sublime-project
+
+# ── OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Docker
+.dockerignore
+docker-compose.override.yml
+
+# ── Deployment / Railway
+# Ignore local Railway workspace files and local envs
+.railway/
+.railway/*
+.deploy/
+
+# ── Build / packaging
+pip-wheel-metadata/
+build/
+dist/
+
+# ── Jupyter
+.ipynb_checkpoints
+
+# ── Other temp files
+tmp/
+temp/
+*.tmp
+
+# ── Secrets stored by IDEs or tooling
+credentials.json
+local_settings.py
+
+# ── Misc
+*.swp
+*.bak
+~$*
