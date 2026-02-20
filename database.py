@@ -11,13 +11,42 @@ from config import settings
 from logging_config import logger
 
 # ---------------------------------------------------------------------------
-# Client singleton
+# Client singleton (lazy-init)
 # ---------------------------------------------------------------------------
 
-supabase: Client = create_client(
-    settings.SUPABASE_URL,
-    settings.SUPABASE_SERVICE_ROLE_KEY,
-)
+# The supabase client can raise deep import-time errors when package
+# versions are incompatible (e.g. httpx/gotrue/supabase mismatches). To
+# ensure the app can surface a clear error and to avoid import-time
+# crashes during container startup, create the client lazily on first use.
+supabase: Optional[Client] = None
+
+
+def get_supabase() -> Client:
+    """Return a singleton Supabase client, creating it on first use.
+
+    Raises a RuntimeError with an actionable message when initialization
+    fails due to dependency incompatibilities.
+    """
+    global supabase
+    if supabase is not None:
+        return supabase
+    try:
+        supabase = create_client(
+            settings.SUPABASE_URL,
+            settings.SUPABASE_SERVICE_ROLE_KEY,
+        )
+        return supabase
+    except TypeError as exc:
+        logger.error("Supabase client init failed (TypeError)", exc_info=exc)
+        raise RuntimeError(
+            "Supabase client initialization failed. This often indicates an "
+            "incompatible set of packages (supabase / gotrue / httpx). "
+            "Ensure your requirements pin httpx to a version supported by "
+            "the installed supabase package (for supabase==2.3.4 pin httpx<0.26)."
+        ) from exc
+    except Exception as exc:
+        logger.error("Supabase client init failed", exc_info=exc)
+        raise
 
 # Resolved once at import time; override with DB_TABLE_NAME in .env
 _TABLE: str = settings.DB_TABLE_NAME
@@ -46,7 +75,7 @@ async def create_product(
         payload["jewellery_type"] = jewellery_type
 
     try:
-        resp = supabase.table(_TABLE).insert(payload).execute()
+        resp = get_supabase().table(_TABLE).insert(payload).execute()
         product = resp.data[0]
         logger.info("Created product", extra={"product_id": product["id"]})
         return product
@@ -73,7 +102,7 @@ async def fetch_pending_job() -> Optional[dict]:
     try:
         # ── Step 1: find the oldest pending job ──────────────────────────
         select_resp = (
-            supabase.table(_TABLE)
+            get_supabase().table(_TABLE)
             .select("id")
             .eq("status", "pending")
             .order("created_at", desc=False)
@@ -89,7 +118,7 @@ async def fetch_pending_job() -> Optional[dict]:
         # ── Step 2: claim it atomically with an optimistic lock ───────────
         now = datetime.now(timezone.utc).isoformat()
         update_resp = (
-            supabase.table(_TABLE)
+            get_supabase().table(_TABLE)
             .update({"status": "processing", "processing_started_at": now})
             .eq("id", job_id)
             .eq("status", "pending")   # only succeeds if still pending
@@ -120,7 +149,7 @@ async def fetch_job_by_id(job_id: str) -> Optional[dict]:
     """Return a full job row by primary key, or None if not found."""
     try:
         resp = (
-            supabase.table(_TABLE)
+            get_supabase().table(_TABLE)
             .select("*")
             .eq("id", job_id)
             .limit(1)
@@ -150,7 +179,7 @@ async def reset_stale_jobs(timeout_seconds: int) -> int:
         ).isoformat()
 
         resp = (
-            supabase.table(_TABLE)
+            get_supabase().table(_TABLE)
             .update({"status": "pending", "processing_started_at": None})
             .eq("status", "processing")
             .lt("processing_started_at", cutoff)
@@ -207,7 +236,7 @@ async def update_job_status(
         payload["processing_time_ms"] = processing_time_ms
 
     try:
-        supabase.table(_TABLE).update(payload).eq("id", job_id).execute()
+        get_supabase().table(_TABLE).update(payload).eq("id", job_id).execute()
         logger.info(
             f"Job status → {status}",
             extra={"job_id": job_id, "status": status},
@@ -228,7 +257,7 @@ async def update_product_image_url(product_id: str, processed_url: str) -> None:
     Raises on DB failure.
     """
     try:
-        supabase.table(_TABLE).update({"image_url": processed_url}).eq("id", product_id).execute()
+        get_supabase().table(_TABLE).update({"image_url": processed_url}).eq("id", product_id).execute()
         logger.info(
             "Product image_url updated",
             extra={"product_id": product_id, "processed_url": processed_url},
