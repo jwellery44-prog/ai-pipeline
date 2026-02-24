@@ -133,13 +133,27 @@ class NanobanaClient:
             "Content-Type": "application/json",
         }
 
-    async def enhance_image(self, image_url: str) -> bytes:
+    async def enhance_image(self, image_url: str, *, prompt: str | None = None) -> bytes:
         """
         Send a background-removed image URL to Nanobana for scene enhancement.
-        Expects a public URL, polls for completion, returns raw result bytes.
+
+        Parameters
+        ----------
+        image_url : str
+            Public URL of the background-removed image produced by Reve.
+        prompt : str | None
+            Override the generation prompt.  When *None* (default), falls back
+            to ``settings.NANOBANA_PROMPT`` so single-image and multi-variant
+            callers both work correctly.
+
+        Returns
+        -------
+        bytes
+            Raw PNG bytes of the generated image.
         """
+        active_prompt = prompt if prompt is not None else settings.NANOBANA_PROMPT
         payload = {
-            "prompt": settings.NANOBANA_PROMPT,
+            "prompt": active_prompt,
             "type": "IMAGETOIAMGE",
             "imageUrls": [image_url],
             "image_size": "1:1"

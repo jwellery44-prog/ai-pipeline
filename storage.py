@@ -155,6 +155,45 @@ def upload_processed_image(file_content: bytes, product_id: str) -> str:
     )
 
 
+def upload_processed_image_variant(
+    file_content: bytes,
+    product_id: str,
+    variant_index: int,
+) -> str:
+    """
+    Upload one of the 4 concurrently generated image variants to Supabase Storage.
+
+    Stored at: ``{PROCESSED_STORAGE_FOLDER}/{product_id}_v{variant_index}.png``
+    in bucket:  ``{PROCESSED_BUCKET_NAME}``
+
+    Parameters
+    ----------
+    file_content : bytes
+        Raw PNG bytes of the generated image.
+    product_id : str
+        UUID of the product row this variant belongs to.
+    variant_index : int
+        1-based variant index (1 to 4).  Used in the storage path and for
+        logging so individual variants are easy to identify.
+
+    Returns
+    -------
+    str
+        Public URL of the uploaded object.
+    """
+    path = f"{settings.PROCESSED_STORAGE_FOLDER}/{product_id}_v{variant_index}.png"
+    logger.info(
+        f"Uploading variant {variant_index}/4 to storage: {path}",
+        extra={"product_id": product_id, "variant": variant_index},
+    )
+    return upload_file_to_storage(
+        file_content,
+        settings.PROCESSED_BUCKET_NAME,
+        path,
+        content_type="image/png",
+    )
+
+
 def upload_file_to_storage(content: bytes, bucket: str, path: str, content_type: str = "image/png") -> str:
     """Generic helper to upload bytes to a bucket and return the public URL."""
     try:

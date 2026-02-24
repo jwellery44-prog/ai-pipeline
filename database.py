@@ -269,3 +269,69 @@ async def update_product_image_url(product_id: str, processed_url: str) -> None:
             exc_info=exc,
         )
         raise
+
+
+async def update_product_generated_images(
+    product_id: str,
+    generated_urls: list[str],
+    *,
+    update_image_url: bool = True,
+) -> None:
+    """
+    Persist the concurrently generated image variant URLs for a product.
+
+    Writes the ordered list of public image URLs to the
+    ``generated_image_urls`` JSONB column on the product row.
+
+    Parameters
+    ----------
+    product_id : str
+        UUID of the product row to update.
+    generated_urls : list[str]
+        Ordered list of public image URLs (variant 1 → variant 4).
+        Empty strings or None values in the list represent variants that
+        failed generation; callers should filter these before passing.
+    update_image_url : bool
+        When True (default), also updates ``image_url`` to the first
+        URL in *generated_urls* so existing consumers remain unaffected.
+        Pass False to leave ``image_url`` unchanged.
+
+    Raises
+    ------
+    Exception
+        Re-raises any Supabase error so the caller can handle it.
+    """
+    if not generated_urls:
+        logger.warning(
+            "update_product_generated_images called with empty list — skipping",
+            extra={"product_id": product_id},
+        )
+        return
+
+    import json
+
+    payload: dict = {
+        "generated_image_urls": json.dumps(generated_urls),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    if update_image_url:
+        payload["image_url"] = generated_urls[0]
+
+    try:
+        get_supabase().table(_TABLE).update(payload).eq("id", product_id).execute()
+        logger.info(
+            f"Stored {len(generated_urls)} generated image URL(s) for product",
+            extra={
+                "product_id": product_id,
+                "variant_count": len(generated_urls),
+                "urls": generated_urls,
+            },
+        )
+    except Exception as exc:
+        logger.error(
+            "update_product_generated_images failed",
+            extra={"product_id": product_id},
+            exc_info=exc,
+        )
+        raise

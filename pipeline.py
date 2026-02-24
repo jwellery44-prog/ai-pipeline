@@ -1,70 +1,186 @@
 from __future__ import annotations
 
+import asyncio
 import time
+from typing import Optional
 
 from ai_clients import nanobana_client, reve_client
-from database import update_job_status, update_product_image_url
-from logging_config import logger
-from storage import resolve_product_image, upload_processed_image, upload_file_to_storage
 from config import settings
+from database import update_job_status, update_product_generated_images
+from logging_config import logger
+from storage import (
+    resolve_product_image,
+    upload_file_to_storage,
+    upload_processed_image,
+    upload_processed_image_variant,
+)
 
 
 # ---------------------------------------------------------------------------
-# Product pipeline  (used by the /process/{image_id} API endpoint)
+# Private helpers
 # ---------------------------------------------------------------------------
 
-async def process_product_image(product: dict) -> str:
+async def _generate_variant(
+    reve_url: str,
+    product_id: str,
+    variant_index: int,
+    prompt: str,
+) -> Optional[str]:
     """
-    Full AI pipeline for a single product.
+    Run a single Nanobana generation + Supabase upload for one variant.
+
+    This coroutine is designed to be gathered concurrently with the other
+    three variants.  Any exception is caught, logged, and converted to
+    ``None`` so one slow or failing variant never cancels the others.
+
+    Parameters
+    ----------
+    reve_url : str
+        Public URL of the Reve background-removed image.
+    product_id : str
+        UUID of the parent product row (used for storage path and logging).
+    variant_index : int
+        1-based index (1–4).  Drives the storage path and log messages.
+    prompt : str
+        The Nanobana generation prompt specific to this variant.
+
+    Returns
+    -------
+    str | None
+        Public Supabase Storage URL of the uploaded variant, or *None* on
+        failure (so callers can filter without crashing).
+    """
+    try:
+        logger.info(
+            f"Variant {variant_index}/4 — starting Nanobana generation",
+            extra={"product_id": product_id, "variant": variant_index},
+        )
+
+        # ── Nanobana generation (network-bound async) ────────────────────
+        image_bytes: bytes = await nanobana_client.enhance_image(
+            reve_url, prompt=prompt
+        )
+
+        # ── Upload to Supabase Storage (sync SDK → run in thread) ────────
+        public_url: str = await asyncio.to_thread(
+            upload_processed_image_variant,
+            image_bytes,
+            product_id,
+            variant_index,
+        )
+
+        logger.info(
+            f"Variant {variant_index}/4 — uploaded successfully: {public_url}",
+            extra={"product_id": product_id, "variant": variant_index},
+        )
+        return public_url
+
+    except Exception as exc:
+        # Isolated failure — log and return None, do NOT re-raise.
+        logger.error(
+            f"Variant {variant_index}/4 failed — will be excluded from results: {exc}",
+            extra={"product_id": product_id, "variant": variant_index},
+            exc_info=exc,
+        )
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Product pipeline  (used by the /process and /process/{id} API endpoints)
+# ---------------------------------------------------------------------------
+
+async def process_product_image(product: dict) -> list[str]:
+    """
+    Full AI pipeline for a single product — produces 4 concurrent variants.
 
     Steps
     -----
-    1. Download raw image from Supabase Storage (plant-images/products/...).
-    2. Reve  — background removal.
-    3. Nanobana — image enhancement.
-    4. Upload processed PNG to Supabase Storage (products/processed/).
-    5. Write the new public URL back to ``products.image_url``.
+    1. Download the raw image from Supabase Storage.
+    2. Reve — background removal (single call, result shared by all variants).
+    3. Upload Reve output to a temporary Storage path so Nanobana can reach it.
+    4. Concurrently generate 4 scene-enhanced variants via Nanobana
+       (each uses a distinct prompt: stone / velvet / marble / charcoal).
+    5. Upload each variant to ``products/processed/{id}_v{n}.png``
+       (steps 4 & 5 are interleaved per-variant inside ``_generate_variant``).
+    6. Persist the ordered list of public URLs to ``products.generated_image_urls``;
+       also write the first successful URL to ``products.image_url`` for
+       backward-compatibility with callers that only read that column.
 
-    Returns the public URL of the processed image.
+    Returns
+    -------
+    list[str]
+        Non-empty list of public URLs for every successfully generated
+        variant (1–4 items).  Raises RuntimeError if ALL variants fail.
     """
     product_id: str = product["id"]
     start = time.time()
 
-    logger.info("Pipeline started", extra={"product_id": product_id})
+    logger.info("Pipeline started (4-variant mode)", extra={"product_id": product_id})
 
-    # 1. Fetch raw image from Supabase Storage --------------------------------
+    # ── Step 1: Download raw image ───────────────────────────────────────
     logger.info("Step 1/4 — downloading raw image from storage", extra={"product_id": product_id})
     image_bytes = resolve_product_image(product)
 
-    # 2. Background removal (Reve) -------------------------------------------
+    # ── Step 2: Background removal (Reve) ────────────────────────────────
     logger.info("Step 2/4 — removing background (Reve)", extra={"product_id": product_id})
-    reve_output = await reve_client.remove_background(image_bytes)
+    reve_output: bytes = await reve_client.remove_background(image_bytes)
 
-    # 2.1 Nanobana requires a public URL for the background-removed image.
-    # We upload it to a temporary path to keep the processed folder clean.
-    reve_url = upload_file_to_storage(
+    # ── Step 3: Upload Reve result to temp path (Nanobana needs a URL) ───
+    logger.info(
+        "Step 3/4 — uploading Reve output to temporary storage path",
+        extra={"product_id": product_id},
+    )
+    reve_url: str = await asyncio.to_thread(
+        upload_file_to_storage,
         reve_output,
         settings.PROCESSED_BUCKET_NAME,
-        f"products/temp/reve_{product_id}.png"
+        f"products/temp/reve_{product_id}.png",
     )
 
-    # 3. Enhancement (Nanobana) ----------------------------------------------
-    logger.info("Step 3/4 — enhancing image (Nanobana)", extra={"product_id": product_id})
-    final_image = await nanobana_client.enhance_image(reve_url)
+    # ── Step 4 & 5: Generate + upload 4 variants concurrently ────────────
+    logger.info(
+        "Step 4/4 — generating 4 variants concurrently via Nanobana",
+        extra={"product_id": product_id},
+    )
+    prompts: list[str] = settings.NANOBANA_VARIANT_PROMPTS
 
-    # 4. Upload processed result ---------------------------------------------
-    logger.info("Step 4/4 — uploading FINAL processed image", extra={"product_id": product_id})
-    processed_url = upload_processed_image(final_image, product_id)
+    variant_results: list[Optional[str]] = await asyncio.gather(
+        _generate_variant(reve_url, product_id, 1, prompts[0]),
+        _generate_variant(reve_url, product_id, 2, prompts[1]),
+        _generate_variant(reve_url, product_id, 3, prompts[2]),
+        _generate_variant(reve_url, product_id, 4, prompts[3]),
+        return_exceptions=False,  # exceptions are already absorbed inside _generate_variant
+    )
 
-    # 5. Persist processed URL back to products table ------------------------
-    await update_product_image_url(product_id, processed_url)
+    # Filter out any variants that returned None (individual failures)
+    successful_urls: list[str] = [url for url in variant_results if url is not None]
+
+    if not successful_urls:
+        raise RuntimeError(
+            f"All 4 Nanobana variants failed for product {product_id}. "
+            "Check logs for per-variant error details."
+        )
+
+    logger.info(
+        f"{len(successful_urls)}/4 variants generated successfully",
+        extra={"product_id": product_id, "urls": successful_urls},
+    )
+
+    # ── Step 6: Persist results to Supabase ──────────────────────────────
+    # generated_image_urls ← full ordered list (None slots already removed)
+    # image_url            ← first successful variant (backwards-compat)
+    await update_product_generated_images(
+        product_id,
+        successful_urls,
+        update_image_url=True,
+    )
 
     elapsed_ms = int((time.time() - start) * 1000)
     logger.info(
-        f"Pipeline complete in {elapsed_ms}ms",
-        extra={"product_id": product_id, "processed_url": processed_url},
+        f"Pipeline complete in {elapsed_ms}ms — {len(successful_urls)} variant(s) stored",
+        extra={"product_id": product_id},
     )
-    return processed_url
+    return successful_urls
 
 
 # ---------------------------------------------------------------------------

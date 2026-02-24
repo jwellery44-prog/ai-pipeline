@@ -213,12 +213,22 @@ async def get_product(product_id: str):
 # ---------------------------------------------------------------------------
 
 async def _run_product_pipeline(product: dict) -> None:
+    """
+    Background task wrapper — runs process_product_image and logs the outcome.
+
+    On success the product row will have:
+      • ``generated_image_urls``  — JSONB array with up to 4 variant URLs
+      • ``image_url``             — first successful variant (backwards-compat)
+
+    Errors are caught and logged so they surface in the app logs without
+    crashing the FastAPI worker process.
+    """
     product_id = product["id"]
     try:
-        processed_url = await process_product_image(product)
+        generated_urls: list[str] = await process_product_image(product)
         logger.info(
-            "Product pipeline finished",
-            extra={"product_id": product_id, "processed_url": processed_url},
+            f"Product pipeline finished — {len(generated_urls)} variant(s) generated",
+            extra={"product_id": product_id, "generated_urls": generated_urls},
         )
     except Exception as exc:
         logger.error(
@@ -226,92 +236,3 @@ async def _run_product_pipeline(product: dict) -> None:
             extra={"product_id": product_id},
             exc_info=exc,
         )
-    """
-    Trigger AI processing for a product.
-
-    Two modes
-    ---------
-    **With file upload** (multipart/form-data):
-      Send the raw image as a ``file`` field. It is stored in
-      ``plant-images/products/{image_id}.jpg`` and ``products.image_url``
-      is updated before the AI pipeline runs.
-
-    **Without file** (plain POST):
-      ``products.image_url`` must already point to a file in Supabase Storage.
-
-    Pipeline (both modes)
-    ---------------------
-    Reve (bg removal) → Nanobana (enhancement) → upload to
-    ``plant-images/products/processed/{image_id}.png`` → update image_url.
-
-    Returns 202 immediately; processing runs in the background.
-    """
-    # ── Validate product exists ───────────────────────────────────────────
-    product = await fetch_job_by_id(image_id)
-    if not product:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Product '{image_id}' not found in table '{settings.DB_TABLE_NAME}'.",
-        )
-
-    # ── Optional file upload — store raw image in Supabase Storage ────────
-    if file is not None:
-        content_type = (file.content_type or "image/jpeg").split(";")[0].strip()
-        if content_type not in settings.ALLOWED_MIME_TYPES:
-            raise HTTPException(
-                status_code=415,
-                detail=f"Unsupported file type '{content_type}'. "
-                       f"Allowed: {settings.ALLOWED_MIME_TYPES}",
-            )
-
-        raw_bytes = await file.read()
-        if len(raw_bytes) > settings.MAX_FILE_SIZE_BYTES:
-            raise HTTPException(
-                status_code=413,
-                detail=f"File too large ({len(raw_bytes):,} bytes). "
-                       f"Max: {settings.MAX_FILE_SIZE_BYTES:,} bytes.",
-            )
-
-        raw_url = upload_raw_image(raw_bytes, image_id, content_type)
-        await update_product_image_url(image_id, raw_url)
-        product = {**product, "image_url": raw_url}
-        logger.info("Raw image uploaded", extra={"product_id": image_id, "raw_url": raw_url})
-
-    elif not product.get("image_url"):
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                f"Product '{image_id}' has no image set. "
-                "Upload one by adding a 'file' field to this request, e.g.:\n\n"
-                "  curl -X POST http://localhost:8000/process/<id> "
-                "-F 'file=@/path/to/image.jpg'"
-            ),
-        )
-
-    # ── Queue pipeline ────────────────────────────────────────────────────
-    background_tasks.add_task(_run_product_pipeline, product)
-    logger.info("Processing queued", extra={"product_id": image_id})
-    return {
-        "message": "Processing queued.",
-        "product_id": image_id,
-        "title": product.get("title"),
-        "raw_image_url": product.get("image_url"),
-    }
-
-
-async def _run_product_pipeline(product: dict) -> None:
-    """Background task wrapper — logs errors so they surface in the app logs."""
-    product_id = product["id"]
-    try:
-        processed_url = await process_product_image(product)
-        logger.info(
-            "Product pipeline finished",
-            extra={"product_id": product_id, "processed_url": processed_url},
-        )
-    except Exception as exc:
-        logger.error(
-            "Product pipeline failed",
-            extra={"product_id": product_id},
-            exc_info=exc,
-        )
-
