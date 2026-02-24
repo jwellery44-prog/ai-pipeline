@@ -2,56 +2,68 @@ import os
 from pydantic_settings import BaseSettings
 
 # ---------------------------------------------------------------------------
-# Default prompts for the 4 concurrently generated image variants.
-# Each variant presents the jewellery on a distinct backdrop at a unique angle.
-# Override any of these via the corresponding env var (e.g. NANOBANA_VARIANT_PROMPT_2).
+# Shared core directive — injected into every variant prompt.
+# This block is the non-negotiable pixel-perfect compositing contract.
+# ---------------------------------------------------------------------------
+
+_CORE_DIRECTIVE = """
+### TASK: PIXEL-PERFECT JEWELLERY COMPOSITING
+
+[PRODUCT_ANALYSIS]: Automatically identify if input is NECKLACE, BANGLE, RING, or EARRING.
+[MATERIAL_LOCK]: {Gold | Silver | Diamond | Platinum | Gemstone | Pearl}
+
+### CORE DIRECTIVES:
+- STRICTLY PRESERVE PIXELS: 100% detail retention of gemstones, facets, and metal textures.
+- NO ALTERING / NO ADDING: Do NOT add extra metal, change the design, or modify the structure. The jewellery must remain MATHEMATICALLY IDENTICAL to the source.
+- MANNEQUIN ALIGNMENT: Place the jewellery STRICTLY on a professional mannequin matching its category (e.g., Neck Bust for Necklace, Wrist for Bangle, Finger for Ring, Ear for Earring).
+- ZERO STYLIZATION: No smoothing, no AI-enhancement, no blurring of edges.
+- PHYSICAL INTERACTION: Generate ONLY realistic contact shadows and ambient occlusion where the metal meets the mannequin.
+- LIGHTING: Match high-end studio lighting. Maintain the original colour temperature and luster of the [MATERIAL_LOCK].
+
+### FINAL CHECK:
+If the jewellery design is altered by even 1%, REJECT and revert to the original input image pixels. The background and mannequin are secondary; the product is the absolute priority.
+""".strip()
+
+# ---------------------------------------------------------------------------
+# 4 variant prompts — each applies the full core directive above but renders
+# from a distinct camera angle and backdrop for maximum visual variety.
+# Override any via env var (e.g. NANOBANA_VARIANT_PROMPT_2).
 # ---------------------------------------------------------------------------
 
 _VARIANT_PROMPT_1 = (
-    "STRICT IMAGE COMPOSITING TASK. "
-    "Place the jewellery on a dark navy-blue sculpted stone surface. "
-    "Classic front-facing display angle — jewellery perfectly centred. "
-    "Soft directional studio lighting from the upper-left. "
-    "Deep, moody, luxurious atmosphere. No background distractions. "
-    "Preserve every detail, texture, reflection, and gemstone of the jewellery exactly. "
-    "Do NOT modify the jewellery design, colour, or proportions. "
-    "Professional luxury product photography."
+    _CORE_DIRECTIVE + "\n\n"
+    "### VARIANT 1 — FRONTAL HERO SHOT\n"
+    "[User_Defined_Angle]: Direct front-facing view, camera perfectly level with the mannequin.\n"
+    "Jewellery centred and fully visible. Clean, neutral dark-navy studio backdrop.\n"
+    "Soft diffused key light from the upper-left, subtle fill from the right.\n"
+    "This is the primary catalogue shot — maximum detail, zero distraction."
 )
 
 _VARIANT_PROMPT_2 = (
-    "STRICT IMAGE COMPOSITING TASK. "
-    "Place the jewellery on a deep burgundy-red velvet cushion surface. "
-    "Present at a gentle 45-degree angle — front-left perspective. "
-    "Warm golden studio lighting from the upper-right. "
-    "Shallow depth of field; soft bokeh background haze. "
-    "Luxury jewellery boutique aesthetic. "
-    "Preserve every detail, texture, reflection, and gemstone of the jewellery exactly. "
-    "Do NOT modify the jewellery design, colour, or proportions. "
-    "Professional luxury product photography."
+    _CORE_DIRECTIVE + "\n\n"
+    "### VARIANT 2 — 45-DEGREE SIDE VIEW\n"
+    "[User_Defined_Angle]: 45-degree side view, camera rotated left relative to the mannequin.\n"
+    "Jewellery perspective matches the mannequin's anatomical contours at this angle precisely.\n"
+    "Warm golden studio lighting from the upper-right; shallow depth of field with soft bokeh.\n"
+    "Deep burgundy-red velvet backdrop. Showcases the jewellery's depth and profile."
 )
 
 _VARIANT_PROMPT_3 = (
-    "STRICT IMAGE COMPOSITING TASK. "
-    "Place the jewellery on a pristine white Carrara marble surface with subtle grey veining. "
-    "Slight overhead / elevated perspective — camera angled 30 degrees above horizontal. "
-    "Bright diffused natural daylight; clean, airy, editorial feel. "
-    "Minimal composition — jewellery as the sole subject. "
-    "High-fashion editorial campaign style. "
-    "Preserve every detail, texture, reflection, and gemstone of the jewellery exactly. "
-    "Do NOT modify the jewellery design, colour, or proportions. "
-    "Professional luxury product photography."
+    _CORE_DIRECTIVE + "\n\n"
+    "### VARIANT 3 — MACRO CLOSE-UP\n"
+    "[User_Defined_Angle]: Macro close-up, camera angled 30 degrees above horizontal.\n"
+    "Extreme detail shot — gemstone facets, metal grain, engravings fully resolved.\n"
+    "Bright diffused natural daylight; pristine white Carrara marble surface beneath.\n"
+    "Fills the entire frame with the jewellery. Zero background distraction."
 )
 
 _VARIANT_PROMPT_4 = (
-    "STRICT IMAGE COMPOSITING TASK. "
-    "Place the jewellery floating and centred against a deep charcoal-black gradient background. "
-    "Subtle warm amber and gold light accents rim the edges. "
-    "Dramatic side-profile angle — jewellery rotated approximately 60 degrees. "
-    "Single hard spotlight from directly above creating a defined shadow below. "
-    "Premium luxury advertisement style — bold and dramatic. "
-    "Preserve every detail, texture, reflection, and gemstone of the jewellery exactly. "
-    "Do NOT modify the jewellery design, colour, or proportions. "
-    "Professional luxury product photography."
+    _CORE_DIRECTIVE + "\n\n"
+    "### VARIANT 4 — THREE-QUARTER ELEVATED VIEW\n"
+    "[User_Defined_Angle]: Three-quarter view, camera elevated 20 degrees above eye level and rotated 30 degrees right.\n"
+    "Dramatic deep charcoal-black gradient backdrop; warm amber and gold rim-light accents on edges.\n"
+    "Single hard spotlight from directly above creating a sharp defined shadow below the mannequin.\n"
+    "Premium luxury advertisement composition — bold, cinematic, editorial."
 )
 
 
