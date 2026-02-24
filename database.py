@@ -308,29 +308,30 @@ async def update_product_generated_images(
         )
         return
 
-    import json
-
+    # IMPORTANT: pass the native Python list directly — PostgREST serialises it
+    # to a JSON array automatically.  Passing json.dumps() (a Python string)
+    # sends a text literal to a JSONB column which PostgREST rejects.
     payload: dict = {
-        "generated_image_urls": json.dumps(generated_urls),
-        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_image_urls": generated_urls,   # list[str] → JSONB array
     }
 
     if update_image_url:
         payload["image_url"] = generated_urls[0]
 
     try:
-        get_supabase().table(_TABLE).update(payload).eq("id", product_id).execute()
+        resp = get_supabase().table(_TABLE).update(payload).eq("id", product_id).execute()
         logger.info(
             f"Stored {len(generated_urls)} generated image URL(s) for product",
             extra={
                 "product_id": product_id,
                 "variant_count": len(generated_urls),
                 "urls": generated_urls,
+                "db_response_count": len(resp.data) if resp.data else 0,
             },
         )
     except Exception as exc:
         logger.error(
-            "update_product_generated_images failed",
+            f"update_product_generated_images FAILED — product_id={product_id} urls={generated_urls}",
             extra={"product_id": product_id},
             exc_info=exc,
         )

@@ -76,11 +76,11 @@ async def _generate_variant(
         return public_url
 
     except Exception as exc:
-        # Isolated failure — log and return None, do NOT re-raise.
+        # Isolated failure — log full traceback and return None, do NOT re-raise.
         logger.error(
-            f"Variant {variant_index}/4 failed — will be excluded from results: {exc}",
+            f"Variant {variant_index}/4 FAILED for product {product_id}: {exc}",
             extra={"product_id": product_id, "variant": variant_index},
-            exc_info=exc,
+            exc_info=True,
         )
         return None
 
@@ -158,7 +158,7 @@ async def process_product_image(product: dict) -> list[str]:
     if not successful_urls:
         raise RuntimeError(
             f"All 4 Nanobana variants failed for product {product_id}. "
-            "Check logs for per-variant error details."
+            "Check logs above for per-variant error details."
         )
 
     logger.info(
@@ -169,10 +169,18 @@ async def process_product_image(product: dict) -> list[str]:
     # ── Step 6: Persist results to Supabase ──────────────────────────────
     # generated_image_urls ← full ordered list (None slots already removed)
     # image_url            ← first successful variant (backwards-compat)
+    logger.info(
+        f"Writing {len(successful_urls)} variant URL(s) to Supabase for product {product_id}",
+        extra={"product_id": product_id},
+    )
     await update_product_generated_images(
         product_id,
         successful_urls,
         update_image_url=True,
+    )
+    logger.info(
+        f"Supabase DB write complete for product {product_id}",
+        extra={"product_id": product_id},
     )
 
     elapsed_ms = int((time.time() - start) * 1000)

@@ -160,60 +160,106 @@ class NanobanaClient:
         }
 
         try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                # 1. Start generation task
+            # ── Step 1: Submit task (short timeout — just an HTTP POST) ────────
+            async with httpx.AsyncClient(timeout=60.0) as submit_client:
                 logger.info(f"Starting Nanobana task for {image_url}")
                 response = await _request_with_retry(
-                    client, "POST", self._GENERATE_URL,
+                    submit_client, "POST", self._GENERATE_URL,
                     headers=self._headers,
                     json=payload,
                     max_retries=settings.MAX_RETRIES
                 )
-                
                 task_data = response.json()
-                task_id = task_data.get("taskId") or task_data.get("data", {}).get("taskId")
-                if not task_id:
-                    raise ValueError(f"Failed to get taskId from Nanobana: {task_data}")
 
-                # 2. Poll for completion
-                max_polls = 30
-                poll_interval = 5
-                
-                logger.info(f"Nanobana task started: {task_id}, polling...")
-                for i in range(max_polls):
-                    await asyncio.sleep(poll_interval)
-                    
+            task_id = (
+                task_data.get("taskId")
+                or task_data.get("data", {}).get("taskId")
+                or (task_data.get("data") or {}).get("id")
+            )
+            if not task_id:
+                raise ValueError(f"Failed to get taskId from Nanobana: {task_data}")
+
+            logger.info(f"Nanobana task submitted: {task_id}, beginning poll loop")
+
+            # ── Step 2: Poll for completion (separate client — no global timeout) 
+            max_polls = 60        # 60 × 5 s = 5 min maximum
+            poll_interval = 5     # seconds between polls
+
+            for i in range(max_polls):
+                await asyncio.sleep(poll_interval)
+
+                async with httpx.AsyncClient(timeout=30.0) as poll_client:
                     status_response = await _request_with_retry(
-                        client, "GET", f"{self._STATUS_URL}?taskId={task_id}",
+                        poll_client, "GET",
+                        f"{self._STATUS_URL}?taskId={task_id}",
                         headers=self._headers,
                         max_retries=2
                     )
-                    
                     status_data = status_response.json()
-                    data = status_data.get("data", {})
-                    
-                    # Check for successFlag == 1 (usually in 'data' object)
-                    if data.get("successFlag") == 1 or status_data.get("successFlag") == 1:
-                        # Extract result URL
-                        res_url = data.get("response", {}).get("resultImageUrl") or data.get("resultImageUrl")
-                        
-                        if not res_url:
-                             res_url = status_data.get("resultImageUrl")
-                        
-                        if res_url:
-                            logger.info(f"Nanobana task completed! Result: {res_url}")
-                            # Download the result bytes
-                            img_resp = await client.get(res_url, timeout=60.0)
-                            img_resp.raise_for_status()
-                            return img_resp.content
-                    
-                    if i % 3 == 0:
-                        logger.info(f"Polling Nanobana task {task_id}... iteration {i}")
 
-                raise TimeoutError(f"Nanobana task {task_id} timed out after {max_polls*poll_interval}s")
+                # Log raw response every 3 polls so we can see the shape
+                if i % 3 == 0:
+                    logger.info(
+                        f"Nanobana poll {i}/{max_polls} — taskId={task_id} "
+                        f"raw_response={status_data}"
+                    )
+
+                data = status_data.get("data") or {}
+
+                # successFlag can be int 1 or string "1" — handle both
+                success = (
+                    data.get("successFlag") in (1, "1")
+                    or status_data.get("successFlag") in (1, "1")
+                )
+
+                if success:
+                    # Try every known field path for the result image URL
+                    res_url = (
+                        (data.get("response") or {}).get("resultImageUrl")
+                        or data.get("resultImageUrl")
+                        or data.get("result_image_url")
+                        or data.get("imageUrl")
+                        or data.get("image_url")
+                        or status_data.get("resultImageUrl")
+                        or status_data.get("imageUrl")
+                    )
+
+                    if not res_url:
+                        # Log the full response so we can identify the correct key
+                        logger.error(
+                            f"Nanobana task {task_id} succeeded but no image URL found. "
+                            f"Full response: {status_data}"
+                        )
+                        raise ValueError(
+                            f"Nanobana task {task_id} succeeded but result URL not found. "
+                            f"Response: {status_data}"
+                        )
+
+                    logger.info(f"Nanobana task {task_id} complete — result URL: {res_url}")
+
+                    # ── Step 3: Download result (separate client, generous timeout) ─
+                    async with httpx.AsyncClient(timeout=120.0) as dl_client:
+                        img_resp = await dl_client.get(res_url, follow_redirects=True)
+                        img_resp.raise_for_status()
+                        logger.info(
+                            f"Downloaded Nanobana result: {len(img_resp.content)} bytes"
+                        )
+                        return img_resp.content
+
+                # Log failure flag if present
+                fail_flag = data.get("failFlag") or status_data.get("failFlag")
+                if fail_flag in (1, "1"):
+                    raise RuntimeError(
+                        f"Nanobana task {task_id} reported failure. Response: {status_data}"
+                    )
+
+            raise TimeoutError(
+                f"Nanobana task {task_id} did not complete within "
+                f"{max_polls * poll_interval}s ({max_polls} polls)"
+            )
 
         except Exception as exc:
-            logger.error(f"Nanobana enhance_image failed: {exc}")
+            logger.error(f"Nanobana enhance_image failed: {exc}", exc_info=True)
             raise
 
 
