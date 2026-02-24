@@ -153,8 +153,6 @@ def upload_processed_image(file_content: bytes, product_id: str) -> str:
         f"{settings.PROCESSED_STORAGE_FOLDER}/{product_id}.png",
         content_type="image/png"
     )
-
-
 def upload_processed_image_variant(
     file_content: bytes,
     product_id: str,
