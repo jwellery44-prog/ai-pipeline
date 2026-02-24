@@ -7,22 +7,33 @@ from pydantic_settings import BaseSettings
 # ---------------------------------------------------------------------------
 
 _CORE_DIRECTIVE = """
-### TASK: PIXEL-PERFECT JEWELLERY COMPOSITING
+### TASK: ULTRA-HIGH RESOLUTION 2X PRODUCT COMPOSITING
 
-[PRODUCT_ANALYSIS]: Automatically identify if input is NECKLACE, BANGLE, RING, or EARRING.
-[MATERIAL_LOCK]: {Gold | Silver | Diamond | Platinum | Gemstone | Pearl}
+[PRODUCT_ANALYSIS]: Strictly analyze the input image and identify the product category: Necklace, Bangle, Ring, Earring, or Pendant.
+[MATERIAL_LOCK]: {Gold | Silver | Diamond | Platinum | Gemstone | Pearl} — lock material properties and preserve luster, refractive index, and colour profile.
 
-### CORE DIRECTIVES:
-- STRICTLY PRESERVE PIXELS: 100% detail retention of gemstones, facets, and metal textures.
-- NO ALTERING / NO ADDING: Do NOT add extra metal, change the design, or modify the structure. The jewellery must remain MATHEMATICALLY IDENTICAL to the source.
-- MANNEQUIN ALIGNMENT: Place the jewellery STRICTLY on a professional mannequin matching its category (e.g., Neck Bust for Necklace, Wrist for Bangle, Finger for Ring, Ear for Earring).
-- ZERO STYLIZATION: No smoothing, no AI-enhancement, no blurring of edges.
-- PHYSICAL INTERACTION: Generate ONLY realistic contact shadows and ambient occlusion where the metal meets the mannequin.
-- LIGHTING: Match high-end studio lighting. Maintain the original colour temperature and luster of the [MATERIAL_LOCK].
+PRIMARY DIRECTIVE: The input jewellery is the Source of Truth. Zero tolerance for alteration.
 
-### FINAL CHECK:
-If the jewellery design is altered by even 1%, REJECT and revert to the original input image pixels. The background and mannequin are secondary; the product is the absolute priority.
-""".strip()
+CORE REQUIREMENTS:
+- STRICTLY PRESERVE PIXELS: 100% retention of gemstone facets, metal micro-texture, engravings, and prismatic details.
+- NO ALTERING / NO ADDING: Do NOT add, remove, or modify any physical element (prongs, links, stones). Geometry must remain mathematically identical to the source.
+- DYNAMIC MANNEQUIN PLACEMENT: Place the jewellery on a professional mannequin matching its category (Neck Bust, Wrist form, Finger prop, Ear display) and align anatomically.
+- ANGLE VARIATION: Render at the requested camera angle (e.g., 45-degree side profile, frontal, macro close-up) while preserving perspective and scale.
+- ZERO STYLIZATION: No denoising, smoothing, color grading, or AI stylization affecting the product pixels.
+- PHYSICAL INTERACTION: Only realistic contact shadows and ambient occlusion at contact points. No artificial reflections that alter the product's appearance.
+
+UPSCALE / OUTPUT:
+- RENDER at 200% (2x) resolution with High-Frequency Detail Retention.
+- PIXEL INTEGRITY: On zoom, all engravings, facets, and textures must remain sharp; do NOT blur or soften.
+- SHARP MASK: Maintain a clean, razor-sharp mask edge between jewellery and mannequin.
+
+LIGHTING & PHYSICS:
+- MATCH studio lighting and environment reflections without changing product geometry or material properties.
+- PRESERVE original metal tones and gemstone clarity exactly.
+
+FINAL CHECK:
+If any single detail of the jewellery design is modified or simplified, abort and revert to the original input pixels. The product is the absolute priority.
+"""
 
 # ---------------------------------------------------------------------------
 # 4 variant prompts — each applies the full core directive above but renders
