@@ -7,32 +7,15 @@ from pydantic_settings import BaseSettings
 # ---------------------------------------------------------------------------
 
 _CORE_DIRECTIVE = """
-### TASK: ULTRA-HIGH RESOLUTION 2X PRODUCT COMPOSITING
+Commercial 4k resolution macro product photography of a high-end [MATERIAL_LOCK] [PRODUCT_TYPE].
+The exact jewelry piece from the input image is perfectly preserved and worn naturally on [MANNEQUIN_TARGET]. [CAMERA_FOCUS] from a [User_Defined_Angle] perspective.
+Flawless preservation of the input object's exact pixels, razor-sharp gemstone facets, immaculate intricate metalwork, pristine edge retention.
+High-end luxury jewelry advertisement, UHD, 8k textures, focus stacking. Soft studio global illumination matching the original material luster, crisp directional rim light.
+Photorealistic, physically accurate contact shadows and ambient occlusion exactly where the metal meets the anatomy. Zero stylization, 100% accurate product representation.
 
-[PRODUCT_ANALYSIS]: Strictly analyze the input image and identify the product category: Necklace, Bangle, Ring, Earring, or Pendant.
-[MATERIAL_LOCK]: {Gold | Silver | Diamond | Platinum | Gemstone | Pearl} — lock material properties and preserve luster, refractive index, and colour profile.
+Negative Prompt:
 
-PRIMARY DIRECTIVE: The input jewellery is the Source of Truth. Zero tolerance for alteration.
-
-CORE REQUIREMENTS:
-- STRICTLY PRESERVE PIXELS: 100% retention of gemstone facets, metal micro-texture, engravings, and prismatic details.
-- NO ALTERING / NO ADDING: Do NOT add, remove, or modify any physical element (prongs, links, stones). Geometry must remain mathematically identical to the source.
-- DYNAMIC MANNEQUIN PLACEMENT: Place the jewellery on a professional mannequin matching its category (Neck Bust, Wrist form, Finger prop, Ear display) and align anatomically.
-- ANGLE VARIATION: Render at the requested camera angle (e.g., 45-degree side profile, frontal, macro close-up) while preserving perspective and scale.
-- ZERO STYLIZATION: No denoising, smoothing, color grading, or AI stylization affecting the product pixels.
-- PHYSICAL INTERACTION: Only realistic contact shadows and ambient occlusion at contact points. No artificial reflections that alter the product's appearance.
-
-UPSCALE / OUTPUT:
-- RENDER at 200% (2x) resolution with High-Frequency Detail Retention.
-- PIXEL INTEGRITY: On zoom, all engravings, facets, and textures must remain sharp; do NOT blur or soften.
-- SHARP MASK: Maintain a clean, razor-sharp mask edge between jewellery and mannequin.
-
-LIGHTING & PHYSICS:
-- MATCH studio lighting and environment reflections without changing product geometry or material properties.
-- PRESERVE original metal tones and gemstone clarity exactly.
-
-FINAL CHECK:
-If any single detail of the jewellery design is modified or simplified, abort and revert to the original input pixels. The product is the absolute priority.
+deformed, mutated, altered geometry, melted metal, dull gemstones, soft focus, blurred, changed proportions, missing prongs, hallucinated elements, structural changes, illustration, 3d render, artificial, low resolution, floating object, misaligned shadows, different object, replaced subject, bad anatomy, deformed mannequin, unnatural skin.
 """
 
 # ---------------------------------------------------------------------------
