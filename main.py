@@ -30,7 +30,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",
         "https://ai-pipeline-frontend.vercel.app",
-        # "https://yourdomain.com",  # add production origin(s) here
+        "jwellery.arpitray.in",  # add production origin(s) here
     ],
     allow_credentials=True,
     allow_methods=["*"],
