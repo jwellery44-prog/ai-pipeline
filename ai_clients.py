@@ -154,7 +154,7 @@ class NanobanaClient:
         active_prompt = prompt if prompt is not None else settings.NANOBANA_PROMPT
         payload = {
             "prompt": active_prompt,
-            "type": "IMAGETOIAMGE",
+            "type": "IMAGETOIMAGE",
             "imageUrls": [image_url],
             "image_size": "1:1"
         }
@@ -171,10 +171,22 @@ class NanobanaClient:
                 )
                 task_data = response.json()
 
+            logger.info(f"Nanobana generate raw response: {task_data!r}")
+
+            if not isinstance(task_data, dict):
+                raise ValueError(
+                    f"Nanobana generate returned unexpected body (expected JSON object): "
+                    f"{task_data!r}"
+                )
+
+            # Use `or {}` (not `get("data", {})`) so an explicit null `data` value
+            # is also handled — dict.get(key, default) only uses the default when
+            # the key is absent, not when it is present with a null value.
+            data_obj = task_data.get("data") or {}
             task_id = (
                 task_data.get("taskId")
-                or task_data.get("data", {}).get("taskId")
-                or (task_data.get("data") or {}).get("id")
+                or data_obj.get("taskId")
+                or data_obj.get("id")
             )
             if not task_id:
                 raise ValueError(f"Failed to get taskId from Nanobana: {task_data}")

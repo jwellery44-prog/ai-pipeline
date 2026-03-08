@@ -41,8 +41,8 @@ def get_supabase() -> Client:
         raise RuntimeError(
             "Supabase client initialization failed. This often indicates an "
             "incompatible set of packages (supabase / gotrue / httpx). "
-            "Ensure your requirements pin httpx to a version supported by "
-            "the installed supabase package (for supabase==2.3.4 pin httpx<0.26)."
+            "Ensure httpx>=0.28.0 is installed — gotrue>=2.9 uses the proxy= "
+            "kwarg which was added in httpx 0.28.0."
         ) from exc
     except Exception as exc:
         logger.error("Supabase client init failed", exc_info=exc)

@@ -1,0 +1,1 @@
+# AI Pipeline - Jewellery Image Processing Service
