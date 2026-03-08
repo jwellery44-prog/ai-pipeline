@@ -29,6 +29,7 @@ async def _generate_variant(
 
         image_bytes = await nanobana_client.enhance_image(reve_url, prompt=prompt)
 
+        # Upload runs in a thread because the Supabase storage SDK is synchronous.
         public_url = await asyncio.to_thread(
             upload_processed_image_variant, image_bytes, product_id, variant_index
         )
@@ -37,6 +38,7 @@ async def _generate_variant(
         return public_url
 
     except Exception as exc:
+        # Return None so the other variants can still finish successfully.
         logger.error(f"Variant {variant_index}/4 FAILED: {exc}", extra={"product_id": product_id}, exc_info=True)
         return None
 
@@ -81,6 +83,8 @@ async def process_product_image(product: dict) -> list[str]:
     logger.info("Step 4/4 — generating 4 variants", extra={"product_id": product_id})
     prompts = settings.NANOBANA_VARIANT_PROMPTS
 
+    # Run all 4 Nanobana calls at the same time. Each takes ~20-40s,
+    # so doing them concurrently saves ~60-90s per product.
     results = await asyncio.gather(
         _generate_variant(reve_url, product_id, 1, prompts[0]),
         _generate_variant(reve_url, product_id, 2, prompts[1]),
@@ -88,6 +92,8 @@ async def process_product_image(product: dict) -> list[str]:
         _generate_variant(reve_url, product_id, 4, prompts[3]),
     )
 
+    # Filter out any None values from variants that failed.
+    # A partial success (e.g. 3/4) is still useful for the frontend.
     successful_urls = [url for url in results if url is not None]
 
     if not successful_urls:

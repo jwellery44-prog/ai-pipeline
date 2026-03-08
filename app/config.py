@@ -1,5 +1,8 @@
 from pydantic_settings import BaseSettings
 
+# Each string below is the exact prompt sent to Nanobana for one variant.
+# They're intentionally verbose — the AI tends to drift from the original
+# jewellery design if the instruction isn't specific enough.
 VARIANT_PROMPTS = [
     (
         "STRICT IMAGE COMPOSITING TASK. "
@@ -50,13 +53,13 @@ VARIANT_PROMPTS = [
 class Settings(BaseSettings):
     # Supabase
     SUPABASE_URL: str
-    SUPABASE_SERVICE_ROLE_KEY: str
+    SUPABASE_SERVICE_ROLE_KEY: str  # service role bypasses RLS, keep this secret
 
     # AI Models
     REVE_API_KEY: str
     REVE_PROMPT: str = ""
     NANOBANA_API_KEY: str
-    NANOBANA_PROMPT: str = ""
+    NANOBANA_PROMPT: str = ""  # only used in single-variant mode; ignored in 4-variant flow
 
     # Variant prompts (can be overridden via env vars)
     NANOBANA_VARIANT_PROMPT_1: str = VARIANT_PROMPTS[0]
@@ -66,6 +69,7 @@ class Settings(BaseSettings):
 
     @property
     def NANOBANA_VARIANT_PROMPTS(self) -> list[str]:
+        # Collected as a list so pipeline.py can just zip() over it.
         return [
             self.NANOBANA_VARIANT_PROMPT_1,
             self.NANOBANA_VARIANT_PROMPT_2,
@@ -81,7 +85,7 @@ class Settings(BaseSettings):
     POLL_INTERVAL_SECONDS: int = 2
     MAX_CONCURRENT_JOBS: int = 5
     MAX_RETRIES: int = 3
-    PROCESSING_TIMEOUT_SECONDS: int = 300
+    PROCESSING_TIMEOUT_SECONDS: int = 300  # 5 minutes before a stuck job is reset
 
     # Database
     DB_TABLE_NAME: str = "images"
@@ -89,14 +93,14 @@ class Settings(BaseSettings):
     # Storage
     RAW_BUCKET_NAME: str = "plant-images"
     RAW_STORAGE_FOLDER: str = "products"
-    PROCESSED_BUCKET_NAME: str = "plant-images"
+    PROCESSED_BUCKET_NAME: str = "plant-images"  # same bucket, different folder
     PROCESSED_STORAGE_FOLDER: str = "products/processed"
     ALLOWED_MIME_TYPES: list[str] = ["image/jpeg", "image/png", "image/webp"]
-    MAX_FILE_SIZE_BYTES: int = 10 * 1024 * 1024
+    MAX_FILE_SIZE_BYTES: int = 10 * 1024 * 1024  # 10 MB
 
     class Config:
         env_file = ".env"
-        extra = "ignore"
+        extra = "ignore"  # silently drop any unknown keys from .env
 
 
 settings = Settings()

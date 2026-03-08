@@ -9,8 +9,13 @@ from supabase import Client, create_client
 from app.config import settings
 from app.logging import logger
 
+# Module-level singleton — creating a Supabase client is expensive, so we
+# do it once on first use rather than on every request.
 _client: Optional[Client] = None
 _TABLE: str = settings.DB_TABLE_NAME
+
+# These PostgREST error codes indicate a schema/config problem that won't
+# fix itself on retry, so we let them propagate immediately.
 _FATAL_PGRST_CODES = {"PGRST205", "PGRST200", "PGRST106"}
 
 
@@ -56,6 +61,7 @@ async def create_product(title: str = "", jewellery_type: str = "") -> dict:
 async def fetch_pending_job() -> Optional[dict]:
     """Atomically claim one pending job using optimistic locking."""
     try:
+        # Select the oldest pending job first ...
         select_resp = (
             get_supabase()
             .table(_TABLE)
@@ -71,6 +77,9 @@ async def fetch_pending_job() -> Optional[dict]:
         job_id = select_resp.data[0]["id"]
         now = datetime.now(timezone.utc).isoformat()
 
+        # ... then claim it by flipping status only if it's still 'pending'.
+        # If another worker grabbed it between select and update, we get 0 rows
+        # back and simply return None without erroring out.
         update_resp = (
             get_supabase()
             .table(_TABLE)
@@ -114,6 +123,8 @@ async def fetch_job_by_id(job_id: str) -> Optional[dict]:
 
 async def reset_stale_jobs(timeout_seconds: int) -> int:
     """Reset jobs stuck in 'processing' beyond timeout back to 'pending'."""
+    # A job gets stuck if the server crashed mid-pipeline. Without this,
+    # the product would stay in 'processing' forever and never show images.
     try:
         cutoff = (datetime.now(timezone.utc) - timedelta(seconds=timeout_seconds)).isoformat()
         resp = (

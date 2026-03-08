@@ -7,6 +7,8 @@ from app.config import settings
 
 
 class JSONFormatter(logging.Formatter):
+    # JSON lines format makes it easy to stream logs into Datadog, CloudWatch,
+    # or any log aggregator without additional parsing rules.
     def format(self, record):
         log_obj = {
             "timestamp": datetime.utcnow().isoformat(),
@@ -15,6 +17,7 @@ class JSONFormatter(logging.Formatter):
             "module": record.module,
             "function": record.funcName,
         }
+        # Callers can attach extra context like job_id by passing it via extra={}
         if hasattr(record, "job_id"):
             log_obj["job_id"] = record.job_id
         if record.exc_info:
@@ -28,8 +31,10 @@ def setup_logging():
 
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(JSONFormatter())
+    # Replace any handlers that might have been set by imported libraries.
     root.handlers = [handler]
 
+    # httpx is noisy at DEBUG/INFO — suppress it so our own logs stay readable.
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
 

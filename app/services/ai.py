@@ -22,6 +22,9 @@ async def _request_with_retry(
     """Generic request helper with exponential back-off on 429/5xx."""
     response = await client.request(method, url, headers=headers, **kwargs)
 
+    # 429 means we're being throttled; 5xx means the upstream had a hiccup.
+    # Both are worth retrying with a back-off — 4xx errors other than 429 are
+    # our fault and retrying won't help.
     if (response.status_code == 429 or response.status_code >= 500) and retry_count < max_retries:
         wait = 2**retry_count
         logger.warning(f"HTTP {response.status_code} from {url} — retrying in {wait}s ({retry_count + 1}/{max_retries})")
@@ -92,6 +95,8 @@ class ReveClient:
             content_type = response.headers.get("Content-Type", "")
             if "application/json" in content_type:
                 data = response.json()
+                # Some Reve response shapes return base64 directly under "image";
+                # others use the Gemini-style candidates structure.
                 if "image" in data:
                     return base64.b64decode(data["image"])
                 return _extract_image_bytes(data)
@@ -127,7 +132,7 @@ class NanobanaClient:
         }
 
         try:
-            # Submit task
+            # Step 1: Submit the generation task and get back a task ID.
             async with httpx.AsyncClient(timeout=60.0) as submit_client:
                 logger.info(f"Starting Nanobana task for {image_url}")
                 response = await _request_with_retry(
@@ -147,7 +152,8 @@ class NanobanaClient:
 
             logger.info(f"Nanobana task submitted: {task_id}")
 
-            # Poll for completion
+            # Step 2: Poll the status endpoint until finished or timed out.
+            # Nanobana is async — generation typically takes 10-40 seconds.
             max_polls = 60
             poll_interval = 5
 
@@ -160,6 +166,7 @@ class NanobanaClient:
                     )
                     status_data = status_response.json()
 
+                # Log every third poll to avoid flooding logs every 5 seconds.
                 if i % 3 == 0:
                     logger.info(f"Nanobana poll {i}/{max_polls} — taskId={task_id} response={status_data}")
 
@@ -167,6 +174,7 @@ class NanobanaClient:
                 success = data.get("successFlag") in (1, "1") or status_data.get("successFlag") in (1, "1")
 
                 if success:
+                    # The result URL can appear in several places depending on the API version.
                     res_url = (
                         (data.get("response") or {}).get("resultImageUrl")
                         or data.get("resultImageUrl")
@@ -183,7 +191,7 @@ class NanobanaClient:
 
                     logger.info(f"Nanobana task {task_id} complete — result URL: {res_url}")
 
-                    # Download result
+                    # Step 3: Download the generated image from the result URL.
                     async with httpx.AsyncClient(timeout=120.0) as dl_client:
                         img_resp = await dl_client.get(res_url, follow_redirects=True)
                         img_resp.raise_for_status()
@@ -201,6 +209,7 @@ class NanobanaClient:
             raise
 
 
-# Singletons
+# Instantiated once at module load and reused across requests.
+# Keeps API key parsing and header setup out of every request path.
 reve_client = ReveClient()
 nanobana_client = NanobanaClient()

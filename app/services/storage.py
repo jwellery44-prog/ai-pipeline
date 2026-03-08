@@ -23,11 +23,15 @@ def _ensure_bucket(bucket_name: str) -> None:
 
 def _storage_path_from_image_url(image_url: str) -> tuple[str, str]:
     """Parse bucket and path from a Supabase storage URL or relative path."""
+    # Supabase public URLs look like:
+    # https://<project>.supabase.co/storage/v1/object/public/<bucket>/<path>
+    # We extract the bucket and path so we can download via the SDK.
     parsed = urlparse(image_url)
     if parsed.scheme in ("http", "https") and "/storage/v1/object/" in parsed.path:
         parts = parsed.path.split("/storage/v1/object/")[-1].split("/", 2)
         if len(parts) >= 3:
             return parts[1], parts[2]
+    # Treat anything else as a raw path in the default raw bucket.
     return settings.RAW_BUCKET_NAME, image_url
 
 
@@ -84,11 +88,14 @@ def upload_file_to_storage(content: bytes, bucket: str, path: str, content_type:
     try:
         _ensure_bucket(bucket)
         sb = get_supabase()
+        # x-upsert: true — overwrite silently if the file already exists.
+        # This lets us re-run the pipeline for the same product without errors.
         sb.storage.from_(bucket).upload(
             path=path,
             file=content,
             file_options={"content-type": content_type, "x-upsert": "true"},
         )
+        # Construct the public URL manually — the SDK doesn't return it on upload.
         public_url = f"{settings.SUPABASE_URL}/storage/v1/object/public/{bucket}/{path}"
         logger.info(f"Uploaded to storage: {public_url}")
         return public_url
