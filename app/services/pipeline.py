@@ -16,7 +16,6 @@ from app.services.storage import (
     upload_processed_image_variant,
 )
 
-
 async def _generate_variant(
     reve_url: str,
     product_id: str,
@@ -41,7 +40,6 @@ async def _generate_variant(
         # Return None so the other variants can still finish successfully.
         logger.error(f"Variant {variant_index}/4 FAILED: {exc}", extra={"product_id": product_id}, exc_info=True)
         return None
-
 
 async def process_product_image(product: dict) -> list[str]:
     """

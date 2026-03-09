@@ -47,7 +47,6 @@ def get_supabase() -> Client:
     except Exception as exc:
         logger.error("Supabase client init failed", exc_info=exc)
         raise
-
 # Resolved once at import time; override with DB_TABLE_NAME in .env
 _TABLE: str = settings.DB_TABLE_NAME
 

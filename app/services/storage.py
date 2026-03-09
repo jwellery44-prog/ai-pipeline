@@ -19,8 +19,7 @@ def _ensure_bucket(bucket_name: str) -> None:
             logger.info(f"Created storage bucket '{bucket_name}'")
     except Exception as exc:
         logger.warning(f"Could not verify/create bucket '{bucket_name}': {exc}")
-
-
+        
 def _storage_path_from_image_url(image_url: str) -> tuple[str, str]:
     """Parse bucket and path from a Supabase storage URL or relative path."""
     # Supabase public URLs look like:

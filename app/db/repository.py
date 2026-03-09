@@ -56,8 +56,6 @@ async def create_product(title: str = "", jewellery_type: str = "") -> dict:
     except Exception as exc:
         logger.error("create_product failed", exc_info=exc)
         raise
-
-
 async def fetch_pending_job() -> Optional[dict]:
     """Atomically claim one pending job using optimistic locking."""
     try:

@@ -101,6 +101,4 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         extra = "ignore"  # silently drop any unknown keys from .env
-
-
 settings = Settings()

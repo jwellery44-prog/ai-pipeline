@@ -158,7 +158,6 @@ class NanobanaClient:
             "imageUrls": [image_url],
             "image_size": "1:1"
         }
-
         try:
             # ── Step 1: Submit task (short timeout — just an HTTP POST) ────────
             async with httpx.AsyncClient(timeout=60.0) as submit_client:

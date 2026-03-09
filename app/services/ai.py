@@ -4,10 +4,8 @@ import asyncio
 import base64
 
 import httpx
-
 from app.config import settings
 from app.logging import logger
-
 
 async def _request_with_retry(
     client: httpx.AsyncClient,

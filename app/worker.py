@@ -15,4 +15,8 @@ async def worker_loop() -> None:
     # Sleeping in a long interval keeps the coroutine alive without busy-looping.
     # If we add a job-queue later, replace this with actual poll logic.
     while True:
-        await asyncio.sleep(3600)
+        try:
+            await asyncio.sleep(3600)
+        except asyncio.CancelledError:
+            logger.info("Worker loop cancelled, shutting down gracefully")
+            break

@@ -53,7 +53,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 @app.middleware("http")
 async def ensure_cors_headers(request, call_next):
     """Ensure CORS headers are present on all responses including errors."""
