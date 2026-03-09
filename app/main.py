@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import BackgroundTasks, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from pydantic import ValidationError as PydanticValidationError
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
@@ -13,6 +14,11 @@ from app.db.repository import create_product, fetch_job_by_id, update_product_im
 from app.logging import logger
 from app.services.pipeline import process_product_image
 from app.services.storage import upload_raw_image
+from app.validation import (
+    ValidationError,
+    validate_product_id,
+    validate_product_input,
+)
 from app.worker import worker_loop
 
 # Rate limiter keyed on client IP. Each route sets its own cap;
@@ -89,6 +95,15 @@ async def process_upload(
     jewellery_type: str = "",
 ):
     """Upload an image and start the AI pipeline."""
+    # --- Input validation (prevents injection attacks) ---
+    try:
+        validated = validate_product_input(title=title, jewellery_type=jewellery_type)
+        title = validated.title
+        jewellery_type = validated.jewellery_type
+    except (ValidationError, PydanticValidationError) as exc:
+        logger.warning(f"Input validation failed: {exc}")
+        raise HTTPException(status_code=422, detail=str(exc))
+
     # Strip charset suffix from content-type before comparing (e.g. 'image/jpeg; charset=...')
     content_type = (file.content_type or "image/jpeg").split(";")[0].strip()
     if content_type not in settings.ALLOWED_MIME_TYPES:
@@ -128,6 +143,13 @@ async def process_image(
     file: UploadFile = File(default=None),
 ):
     """Trigger AI processing for an existing product."""
+    # --- Validate image_id is a proper UUID (prevents path traversal) ---
+    try:
+        image_id = validate_product_id(image_id)
+    except ValidationError as exc:
+        logger.warning(f"Invalid image_id: {exc}")
+        raise HTTPException(status_code=422, detail=str(exc))
+
     product = await fetch_job_by_id(image_id)
     if not product:
         raise HTTPException(status_code=404, detail=f"Product '{image_id}' not found")
@@ -165,6 +187,13 @@ async def process_image(
 @limiter.limit("60/minute")
 async def get_product(request: Request, product_id: str):
     """Fetch current state of a product."""
+    # --- Validate product_id is a proper UUID ---
+    try:
+        product_id = validate_product_id(product_id)
+    except ValidationError as exc:
+        logger.warning(f"Invalid product_id: {exc}")
+        raise HTTPException(status_code=422, detail=str(exc))
+
     product = await fetch_job_by_id(product_id)
     if not product:
         raise HTTPException(status_code=404, detail=f"Product '{product_id}' not found")
