@@ -110,7 +110,7 @@ class ReveClient:
 class NanobanaClient:
     """Client for Nanobana scene enhancement API."""
 
-    _GENERATE_URL = "https://api.nanobananaapi.ai/api/v1/nanobanana/generate"
+    _GENERATE_URL = "https://api.nanobananaapi.ai/api/v1/nanobanana/generate-pro"
     _STATUS_URL = "https://api.nanobananaapi.ai/api/v1/nanobanana/record-info"
 
     def __init__(self) -> None:
@@ -124,9 +124,9 @@ class NanobanaClient:
         active_prompt = prompt if prompt is not None else settings.NANOBANA_PROMPT
         payload = {
             "prompt": active_prompt,
-            "type": "IMAGETOIMAGE",
             "imageUrls": [image_url],
-            "image_size": "1:1",
+            "resolution": "4K",
+            "aspectRatio": "1:1",
         }
 
         try:
@@ -138,8 +138,6 @@ class NanobanaClient:
                 )
                 task_data = response.json()
 
-            logger.info(f"Nanobana generate response: {task_data!r}")
-
             if not isinstance(task_data, dict):
                 raise ValueError(f"Unexpected response (expected dict): {task_data!r}")
 
@@ -148,7 +146,7 @@ class NanobanaClient:
             if not task_id:
                 raise ValueError(f"Failed to get taskId from Nanobana: {task_data}")
 
-            logger.info(f"Nanobana task submitted: {task_id}")
+            logger.info(f"Nanobana task queued — taskId={task_id}")
 
             # Step 2: Poll the status endpoint until finished or timed out.
             # Nanobana is async — generation typically takes 10-40 seconds.
@@ -164,9 +162,10 @@ class NanobanaClient:
                     )
                     status_data = status_response.json()
 
-                # Log every third poll to avoid flooding logs every 5 seconds.
-                if i % 3 == 0:
-                    logger.info(f"Nanobana poll {i}/{max_polls} — taskId={task_id} response={status_data}")
+                # Log every 5th poll so you can see it's alive without flooding
+                if i % 5 == 0:
+                    elapsed = (i + 1) * poll_interval
+                    logger.info(f"Nanobana waiting... {elapsed}s elapsed (poll {i+1}/{max_polls})  taskId={task_id}")
 
                 data = status_data.get("data") or {}
                 success = data.get("successFlag") in (1, "1") or status_data.get("successFlag") in (1, "1")

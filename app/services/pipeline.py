@@ -24,7 +24,7 @@ async def _generate_variant(
 ) -> Optional[str]:
     """Run single Nanobana generation + upload for one variant."""
     try:
-        logger.info(f"Variant {variant_index}/4 — starting", extra={"product_id": product_id})
+        logger.info(f"Variant {variant_index} — starting", extra={"product_id": product_id})
 
         image_bytes = await nanobana_client.enhance_image(reve_url, prompt=prompt)
 
@@ -33,12 +33,12 @@ async def _generate_variant(
             upload_processed_image_variant, image_bytes, product_id, variant_index
         )
 
-        logger.info(f"Variant {variant_index}/4 — uploaded: {public_url}", extra={"product_id": product_id})
+        logger.info(f"Variant {variant_index} — done: {public_url}", extra={"product_id": product_id})
         return public_url
 
     except Exception as exc:
         # Return None so the other variants can still finish successfully.
-        logger.error(f"Variant {variant_index}/4 FAILED: {exc}", extra={"product_id": product_id}, exc_info=True)
+        logger.error(f"Variant {variant_index} FAILED: {exc}", extra={"product_id": product_id}, exc_info=True)
         return None
 
 async def process_product_image(product: dict) -> list[str]:
@@ -58,7 +58,8 @@ async def process_product_image(product: dict) -> list[str]:
     product_id = product["id"]
     start = time.time()
 
-    logger.info("Pipeline started (4-variant mode)", extra={"product_id": product_id})
+    variant_count = 1 if settings.TEST_MODE else 4
+    logger.info(f"Pipeline started ({'TEST — 1 variant' if settings.TEST_MODE else '4-variant mode'})", extra={"product_id": product_id})
 
     # Step 1: Download raw image
     logger.info("Step 1/4 — downloading raw image", extra={"product_id": product_id})
@@ -89,13 +90,11 @@ async def process_product_image(product: dict) -> list[str]:
         extra={"product_id": product_id},
     )
 
-    # Run all 4 Nanobana calls at the same time. Each takes ~20-40s,
-    # so doing them concurrently saves ~60-90s per product.
+    # In TEST_MODE only 1 variant is generated to avoid burning API credits.
+    # Flip TEST_MODE=false in .env when ready to go full 4-variant.
+    active_prompts = prompts[:variant_count]
     results = await asyncio.gather(
-        _generate_variant(reve_url, product_id, 1, prompts[0]),
-        _generate_variant(reve_url, product_id, 2, prompts[1]),
-        _generate_variant(reve_url, product_id, 3, prompts[2]),
-        _generate_variant(reve_url, product_id, 4, prompts[3]),
+        *[_generate_variant(reve_url, product_id, i + 1, p) for i, p in enumerate(active_prompts)]
     )
 
     # Filter out any None values from variants that failed.
@@ -103,9 +102,9 @@ async def process_product_image(product: dict) -> list[str]:
     successful_urls = [url for url in results if url is not None]
 
     if not successful_urls:
-        raise RuntimeError(f"All 4 variants failed for product {product_id}")
+        raise RuntimeError(f"All {variant_count} variant(s) failed for product {product_id}")
 
-    logger.info(f"{len(successful_urls)}/4 variants generated", extra={"product_id": product_id})
+    logger.info(f"{len(successful_urls)}/{variant_count} variants generated", extra={"product_id": product_id})
 
     # Step 6: Persist to database
     await update_product_generated_images(product_id, successful_urls, update_image_url=True)

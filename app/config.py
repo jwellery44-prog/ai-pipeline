@@ -86,6 +86,8 @@ class Settings(BaseSettings):
     # App
     ENVIRONMENT: str = "development"
     LOG_LEVEL: str = "INFO"
+    # Set TEST_MODE=true in .env to generate only 1 variant (saves API credits during testing)
+    TEST_MODE: bool = False
 
     # Worker
     POLL_INTERVAL_SECONDS: int = 2
