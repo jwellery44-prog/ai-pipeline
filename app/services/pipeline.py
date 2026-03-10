@@ -4,7 +4,7 @@ import asyncio
 import time
 from typing import Optional
 
-from app.config import settings
+from app.config import build_variant_prompts, settings
 from app.db.repository import update_job_status, update_product_generated_images
 from app.logging import logger
 from app.services.ai import nanobana_client, reve_client
@@ -79,7 +79,15 @@ async def process_product_image(product: dict) -> list[str]:
 
     # Step 4 & 5: Generate + upload 4 variants
     logger.info("Step 4/4 — generating 4 variants", extra={"product_id": product_id})
-    prompts = settings.NANOBANA_VARIANT_PROMPTS
+    # Build prompts with product-specific data so the AI knows exactly what
+    # jewellery item it is placing — improves accuracy and reduces design drift.
+    title = product.get("title", "")
+    jewellery_type = product.get("jewellery_type", "")
+    prompts = build_variant_prompts(title, jewellery_type)
+    logger.info(
+        f"Prompts built for '{title}' ({jewellery_type})",
+        extra={"product_id": product_id},
+    )
 
     # Run all 4 Nanobana calls at the same time. Each takes ~20-40s,
     # so doing them concurrently saves ~60-90s per product.

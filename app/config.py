@@ -3,48 +3,54 @@ from pydantic_settings import BaseSettings
 # Each string below is the exact prompt sent to Nanobana for one variant.
 # They're intentionally verbose — the AI tends to drift from the original
 # jewellery design if the instruction isn't specific enough.
+# Use {item_description} as a placeholder — it is replaced at runtime with the
+# actual product title and jewellery type (e.g. "Diamond Tennis Bracelet (bracelet)").
 VARIANT_PROMPTS = [
     (
         "STRICT IMAGE COMPOSITING TASK. "
-        "Place the jewellery on a dark navy-blue sculpted stone surface. "
-        "Classic front-facing display angle — jewellery perfectly centred. "
+        "Subject: {item_description}. "
+        "Place the {item_description} on a dark navy-blue sculpted stone surface. "
+        "Classic front-facing display angle — {item_description} perfectly centred. "
         "Soft directional studio lighting from the upper-left. "
         "Deep, moody, luxurious atmosphere. No background distractions. "
-        "Preserve every detail, texture, reflection, and gemstone of the jewellery exactly. "
-        "Do NOT modify the jewellery design, colour, or proportions. "
+        "Preserve every detail, texture, reflection, and gemstone of the {item_description} exactly. "
+        "Do NOT modify the {item_description} design, colour, or proportions. "
         "Professional luxury product photography."
     ),
     (
         "STRICT IMAGE COMPOSITING TASK. "
-        "Place the jewellery on a deep burgundy-red velvet cushion surface. "
+        "Subject: {item_description}. "
+        "Place the {item_description} on a deep burgundy-red velvet cushion surface. "
         "Present at a gentle 45-degree angle — front-left perspective. "
         "Warm golden studio lighting from the upper-right. "
         "Shallow depth of field; soft bokeh background haze. "
         "Luxury jewellery boutique aesthetic. "
-        "Preserve every detail, texture, reflection, and gemstone of the jewellery exactly. "
-        "Do NOT modify the jewellery design, colour, or proportions. "
+        "Preserve every detail, texture, reflection, and gemstone of the {item_description} exactly. "
+        "Do NOT modify the {item_description} design, colour, or proportions. "
         "Professional luxury product photography."
     ),
     (
         "STRICT IMAGE COMPOSITING TASK. "
-        "Place the jewellery on a pristine white Carrara marble surface with subtle grey veining. "
+        "Subject: {item_description}. "
+        "Place the {item_description} on a pristine white Carrara marble surface with subtle grey veining. "
         "Slight overhead / elevated perspective — camera angled 30 degrees above horizontal. "
         "Bright diffused natural daylight; clean, airy, editorial feel. "
-        "Minimal composition — jewellery as the sole subject. "
+        "Minimal composition — {item_description} as the sole subject. "
         "High-fashion editorial campaign style. "
-        "Preserve every detail, texture, reflection, and gemstone of the jewellery exactly. "
-        "Do NOT modify the jewellery design, colour, or proportions. "
+        "Preserve every detail, texture, reflection, and gemstone of the {item_description} exactly. "
+        "Do NOT modify the {item_description} design, colour, or proportions. "
         "Professional luxury product photography."
     ),
     (
         "STRICT IMAGE COMPOSITING TASK. "
-        "Place the jewellery floating and centred against a deep charcoal-black gradient background. "
+        "Subject: {item_description}. "
+        "Place the {item_description} floating and centred against a deep charcoal-black gradient background. "
         "Subtle warm amber and gold light accents rim the edges. "
-        "Dramatic side-profile angle — jewellery rotated approximately 60 degrees. "
+        "Dramatic side-profile angle — {item_description} rotated approximately 60 degrees. "
         "Single hard spotlight from directly above creating a defined shadow below. "
         "Premium luxury advertisement style — bold and dramatic. "
-        "Preserve every detail, texture, reflection, and gemstone of the jewellery exactly. "
-        "Do NOT modify the jewellery design, colour, or proportions. "
+        "Preserve every detail, texture, reflection, and gemstone of the {item_description} exactly. "
+        "Do NOT modify the {item_description} design, colour, or proportions. "
         "Professional luxury product photography."
     ),
 ]
@@ -101,4 +107,47 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         extra = "ignore"  # silently drop any unknown keys from .env
+
+
 settings = Settings()
+
+
+def build_variant_prompts(title: str = "", jewellery_type: str = "") -> list[str]:
+    """Return the 4 Nanobana variant prompts with product data injected.
+
+    Combines ``title`` and ``jewellery_type`` (both already sanitised by
+    validation.py) into a single ``item_description`` string that is
+    substituted into every ``{item_description}`` placeholder in each prompt
+    template.  This gives the AI precise context about the specific product
+    so it doesn't drift from the original design.
+
+    Examples
+    --------
+    title="Diamond Tennis Bracelet", jewellery_type="bracelet"
+        → item_description = "Diamond Tennis Bracelet (bracelet)"
+
+    title="Gold Ring", jewellery_type=""
+        → item_description = "Gold Ring"
+
+    title="", jewellery_type="necklace"
+        → item_description = "necklace"
+
+    title="", jewellery_type=""
+        → item_description = "jewellery"
+    """
+    title = (title or "").strip()
+    jewellery_type = (jewellery_type or "").strip()
+
+    if title and jewellery_type:
+        item_description = f"{title} ({jewellery_type})"
+    elif title:
+        item_description = title
+    elif jewellery_type:
+        item_description = jewellery_type
+    else:
+        item_description = "jewellery"
+
+    # .format() only substitutes named placeholders that exist in the string —
+    # templates without {item_description} are returned unchanged, so custom
+    # env-var overrides that omit the placeholder continue to work safely.
+    return [p.format(item_description=item_description) for p in settings.NANOBANA_VARIANT_PROMPTS]
