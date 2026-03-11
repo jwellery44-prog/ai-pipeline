@@ -1,0 +1,30 @@
+# Virtual environment — always excluded, packages are installed during build
+.venv/
+
+# Secrets — never bake .env into an image; inject via Cloud Run / Docker secrets
+.env
+.env.*
+
+# Python artefacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+
+# Version control
+.git/
+.gitignore
+.gitattributes
+
+# Development & docs
+README.md
+PIPELINE_DESIGN.md
+*.md
+migrations/
+
+# Build files
+Dockerfile
+.dockerignore
