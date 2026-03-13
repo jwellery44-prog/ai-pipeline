@@ -5,7 +5,6 @@ import base64
 import json
 
 import httpx
-
 from config import settings
 from logging_config import logger
 

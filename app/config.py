@@ -1,7 +1,5 @@
 from pydantic_settings import BaseSettings
 
-# Each string below is the exact prompt sent to Nanobana for one variant.
-# They're intentionally verbose — the AI tends to drift from the original
 # jewellery design if the instruction isn't specific enough.
 # Use {item_description} as a placeholder — it is replaced at runtime with the
 # actual product title and jewellery type (e.g. "Diamond Tennis Bracelet (bracelet)").

@@ -8,7 +8,6 @@ Provides Pydantic models and utility functions to:
 4. Block potentially dangerous characters and patterns
 """
 from __future__ import annotations
-
 import html
 import re
 from typing import Annotated, Optional

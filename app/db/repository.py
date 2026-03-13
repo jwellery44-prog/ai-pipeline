@@ -8,7 +8,6 @@ from supabase import Client, create_client
 
 from app.config import settings
 from app.logging import logger
-
 # Module-level singleton — creating a Supabase client is expensive, so we
 # do it once on first use rather than on every request.
 _client: Optional[Client] = None

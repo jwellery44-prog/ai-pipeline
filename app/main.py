@@ -8,6 +8,8 @@ from pydantic import ValidationError as PydanticValidationError
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
+import sentry_sdk
+from sentry_sdk.integrations.fastapi import FastApiIntegration
 
 from app.config import settings
 from app.db.repository import create_product, fetch_job_by_id, update_product_image_url
@@ -25,6 +27,15 @@ from app.worker import worker_loop
 # the default here is a fallback for any route we forget to decorate.
 limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
 
+        
+sentry_sdk.init(
+    dsn="https://552af2979791a3f02824c0ffe7efd9ae@o4511036789424128.ingest.de.sentry.io/4511037162848336",
+    integrations=[FastApiIntegration()],
+    traces_sample_rate=1.0,
+    # Add data like request headers and IP for users,
+    # see https://docs.sentry.io/platforms/python/data-management/data-collected/ for more info
+    send_default_pii=True,
+)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -40,6 +51,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+
 app.state.limiter = limiter
 # slowapi needs this handler registered so it returns a proper 429 JSON body
 # instead of a generic 500 when a rate limit is hit.
@@ -82,6 +94,7 @@ async def ensure_cors_headers(request, call_next):
 async def health_check(request: Request):
     return {"status": "ok", "environment": settings.ENVIRONMENT}
 
+        
 
 # 5 requests/minute per IP — the pipeline is expensive (Reve + 4x Nanobana),
 # so we keep this tight to avoid runaway costs from a single client.

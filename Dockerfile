@@ -34,7 +34,6 @@ ENV PYTHONUNBUFFERED=1 \
     PORT=8000
 
 USER appuser
-
 EXPOSE 8000
 
 # Lightweight health check using stdlib urllib — no extra binaries needed.

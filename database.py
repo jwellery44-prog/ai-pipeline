@@ -10,7 +10,7 @@ from postgrest.exceptions import APIError
 from config import settings
 from logging_config import logger
 
-# ---------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 # Client singleton (lazy-init)
 # ---------------------------------------------------------------------------
 

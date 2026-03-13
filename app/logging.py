@@ -4,7 +4,6 @@ from datetime import datetime
 
 from app.config import settings
 
-
 class ReadableFormatter(logging.Formatter):
     def format(self, record):
         ts = datetime.utcnow().strftime("%H:%M:%S")
