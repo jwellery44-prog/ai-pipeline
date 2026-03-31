@@ -13,5 +13,5 @@ jobs:
 
       - name: Push to new repo
         run: |
-          git remote add new https://<TOKEN>@github.com/new-account/repo.git
+          git remote add new https://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@github.com/jwellery44-prog/ai-pipeline
           git push new main
