@@ -8,8 +8,6 @@ from pydantic import ValidationError as PydanticValidationError
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
-import sentry_sdk
-from sentry_sdk.integrations.fastapi import FastApiIntegration
 
 from app.config import settings
 from app.db.repository import create_product, fetch_job_by_id, update_product_image_url
@@ -28,15 +26,6 @@ from app.worker import worker_loop
 limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
 
         
-sentry_sdk.init(
-    dsn="https://552af2979791a3f02824c0ffe7efd9ae@o4511036789424128.ingest.de.sentry.io/4511037162848336",
-    integrations=[FastApiIntegration()],
-    traces_sample_rate=1.0,
-    # Add data like request headers and IP for users,
-    # see https://docs.sentry.io/platforms/python/data-management/data-collected/ for more info
-    send_default_pii=True,
-)
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Start the background worker as soon as the server is ready.
