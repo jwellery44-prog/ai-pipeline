@@ -125,7 +125,7 @@ class NanobanaClient:
         payload = {
             "prompt": active_prompt,
             "imageUrls": [image_url],
-            "resolution": "4K",
+            "resolution": "1K",
             "aspectRatio": "1:1",
         }
 
