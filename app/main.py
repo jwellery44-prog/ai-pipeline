@@ -53,6 +53,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",
         "https://ai-pipeline-frontend.vercel.app",
+        "https://jewel-india-frontend-uiet.vercel.app",
         "https://jwellery.arpitray.in",
     ],
     allow_credentials=True,
