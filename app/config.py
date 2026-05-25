@@ -64,6 +64,9 @@ class Settings(BaseSettings):
     REVE_PROMPT: str = ""
     NANOBANA_API_KEY: str
     NANOBANA_PROMPT: str = ""  # only used in single-variant mode; ignored in 4-variant flow
+    # Nanobana 2 endpoint: controls output resolution. Supported values: "1K", "2K", "4K".
+    # "2K" costs $0.06/image; "4K" costs $0.09/image; "1K" costs $0.04/image.
+    NANOBANA_IMAGE_SIZE: str = "2K"
 
     # Variant prompts (can be overridden via env vars)
     NANOBANA_VARIANT_PROMPT_1: str = VARIANT_PROMPTS[0]

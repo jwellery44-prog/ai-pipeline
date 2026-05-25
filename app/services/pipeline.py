@@ -7,7 +7,7 @@ from typing import Optional
 from app.config import build_variant_prompts, settings
 from app.db.repository import update_job_status, update_product_generated_images
 from app.logging import logger
-from app.services.ai import nanobana_client, reve_client
+from app.services.ai import nanobana_client, nanobana_client2, reve_client
 from app.services.storage import (
     download_image,
     resolve_product_image,
@@ -22,18 +22,19 @@ async def _generate_variant(
     variant_index: int,
     prompt: str,
 ) -> Optional[str]:
-    """Run single Nanobana generation + upload for one variant."""
+    """Run single Nanobana 2 (2K) generation + upload for one variant."""
     try:
-        logger.info(f"Variant {variant_index} — starting", extra={"product_id": product_id})
+        logger.info(f"Variant {variant_index} — starting (2K)", extra={"product_id": product_id})
 
-        image_bytes = await nanobana_client.enhance_image(reve_url, prompt=prompt)
+        # Use Nanobana 2 (/generate-2) which natively outputs 2K images.
+        image_bytes = await nanobana_client2.enhance_image(reve_url, prompt=prompt)
 
         # Upload runs in a thread because the Supabase storage SDK is synchronous.
         public_url = await asyncio.to_thread(
             upload_processed_image_variant, image_bytes, product_id, variant_index
         )
 
-        logger.info(f"Variant {variant_index} — done: {public_url}", extra={"product_id": product_id})
+        logger.info(f"Variant {variant_index} — done (2K): {public_url}", extra={"product_id": product_id})
         return public_url
 
     except Exception as exc:
@@ -78,8 +79,8 @@ async def process_product_image(product: dict) -> list[str]:
         f"products/temp/reve_{product_id}.png",
     )
 
-    # Step 4 & 5: Generate + upload 4 variants
-    logger.info("Step 4/4 — generating 4 variants", extra={"product_id": product_id})
+    # Step 4 & 5: Generate + upload 4 variants at 2K resolution via Nanobana 2.
+    logger.info("Step 4/4 — generating 4 variants (Nanobana 2, 2K)", extra={"product_id": product_id})
     # Build prompts with product-specific data so the AI knows exactly what
     # jewellery item it is placing — improves accuracy and reduces design drift.
     title = product.get("title", "")

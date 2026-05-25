@@ -261,7 +261,158 @@ class NanobanaClient:
             raise
 
 
+class NanobanaClient2:
+    """
+    Client for Nanobana 2 — native 2K/4K image generation.
+
+    Uses the newer ``/generate-2`` endpoint (Gemini 3.1 Flash Image) which
+    accepts an ``imageSize`` parameter ("1K" | "2K" | "4K") and returns a
+    natively high-resolution result without any post-processing upscale.
+
+    Pricing (via nanobananaapi.ai):
+      - 1K  →  $0.04 / image
+      - 2K  →  $0.06 / image
+      - 4K  →  $0.09 / image
+
+    The image size is controlled by ``settings.NANOBANA_IMAGE_SIZE`` (default
+    "2K").  Set ``NANOBANA_IMAGE_SIZE=4K`` in .env to go 4K, or "1K" to save
+    credits during testing.
+    """
+
+    _GENERATE_URL = "https://api.nanobananaapi.ai/api/v1/nanobanana/generate-2"
+    _STATUS_URL   = "https://api.nanobananaapi.ai/api/v1/nanobanana/record-info"
+
+    def __init__(self) -> None:
+        self._headers = {
+            "Authorization": f"Bearer {settings.NANOBANA_API_KEY}",
+            "Content-Type": "application/json",
+        }
+
+    async def enhance_image(
+        self, image_url: str, *, prompt: str | None = None
+    ) -> bytes:
+        """Submit bg-removed image to Nanobana 2, poll for completion, return 2K image bytes."""
+        active_prompt = prompt if prompt is not None else settings.NANOBANA_PROMPT
+        image_size = settings.NANOBANA_IMAGE_SIZE  # "1K" | "2K" | "4K"
+
+        # Nanobana 2 / generate-2 payload — imageSize is the key resolution control.
+        # imageUrls triggers image-to-image editing mode (jewellery placed in scene).
+        payload = {
+            "prompt": active_prompt,
+            "imageUrls": [image_url],
+            "imageSize": image_size,
+            "callBackUrl": "https://api.nanobananaapi.ai/callback",
+        }
+
+        try:
+            # Step 1: Submit task.
+            async with httpx.AsyncClient(timeout=60.0) as submit_client:
+                logger.info(
+                    f"Nanobana2 request — URL: {self._GENERATE_URL}, "
+                    f"imageSize={image_size}, payload: {payload}"
+                )
+                response = await _request_with_retry(
+                    submit_client,
+                    "POST",
+                    self._GENERATE_URL,
+                    headers=self._headers,
+                    json=payload,
+                    max_retries=settings.MAX_RETRIES,
+                )
+                task_data = response.json()
+                logger.info(f"Nanobana2 submit response: {task_data}")
+
+            if not isinstance(task_data, dict):
+                raise ValueError(f"Nanobana2 unexpected response (expected dict): {task_data!r}")
+
+            data_obj = task_data.get("data") or {}
+            task_id = (
+                task_data.get("taskId") or data_obj.get("taskId") or data_obj.get("id")
+            )
+            if not task_id:
+                raise ValueError(f"Nanobana2 failed to get taskId: {task_data}")
+
+            logger.info(f"Nanobana2 task queued — taskId={task_id}, imageSize={image_size}")
+
+            # Step 2: Poll until done (same polling endpoint as the original client).
+            max_polls = 60  # 60 × 5 s = 5 min maximum
+            poll_interval = 5
+
+            for i in range(max_polls):
+                await asyncio.sleep(poll_interval)
+
+                async with httpx.AsyncClient(timeout=30.0) as poll_client:
+                    status_response = await _request_with_retry(
+                        poll_client,
+                        "GET",
+                        f"{self._STATUS_URL}?taskId={task_id}",
+                        headers=self._headers,
+                        max_retries=2,
+                    )
+                    status_data = status_response.json()
+
+                if i % 5 == 0:
+                    elapsed = (i + 1) * poll_interval
+                    logger.info(
+                        f"Nanobana2 waiting... {elapsed}s elapsed (poll {i + 1}/{max_polls}) "
+                        f"taskId={task_id} imageSize={image_size}"
+                    )
+
+                data = status_data.get("data") or {}
+                success = data.get("successFlag") in (1, "1") or status_data.get(
+                    "successFlag"
+                ) in (1, "1")
+
+                if success:
+                    res_url = (
+                        (data.get("response") or {}).get("resultImageUrl")
+                        or data.get("resultImageUrl")
+                        or data.get("result_image_url")
+                        or data.get("imageUrl")
+                        or data.get("image_url")
+                        or status_data.get("resultImageUrl")
+                        or status_data.get("imageUrl")
+                    )
+
+                    if not res_url:
+                        logger.error(
+                            f"Nanobana2 task {task_id} succeeded but no image URL. "
+                            f"Response: {status_data}"
+                        )
+                        raise ValueError(
+                            f"Nanobana2 task {task_id} succeeded but no URL. Response: {status_data}"
+                        )
+
+                    logger.info(
+                        f"Nanobana2 task {task_id} complete ({image_size}) — result URL: {res_url}"
+                    )
+
+                    # Step 3: Download the 2K result image.
+                    async with httpx.AsyncClient(timeout=120.0) as dl_client:
+                        img_resp = await dl_client.get(res_url, follow_redirects=True)
+                        img_resp.raise_for_status()
+                        logger.info(
+                            f"Nanobana2 downloaded {image_size} result: {len(img_resp.content)} bytes"
+                        )
+                        return img_resp.content
+
+                fail_flag = data.get("failFlag") or status_data.get("failFlag")
+                if fail_flag in (1, "1"):
+                    raise RuntimeError(
+                        f"Nanobana2 task {task_id} failed. Response: {status_data}"
+                    )
+
+            raise TimeoutError(
+                f"Nanobana2 task {task_id} did not complete within {max_polls * poll_interval}s"
+            )
+
+        except Exception as exc:
+            logger.error(f"Nanobana2 enhance_image failed: {exc}", exc_info=True)
+            raise
+
+
 # Instantiated once at module load and reused across requests.
 # Keeps API key parsing and header setup out of every request path.
 reve_client = ReveClient()
-nanobana_client = NanobanaClient()
+nanobana_client = NanobanaClient()        # original edit endpoint — $0.02/image (1K)
+nanobana_client2 = NanobanaClient2()      # Nanobana 2 endpoint   — $0.06/image (2K native)
