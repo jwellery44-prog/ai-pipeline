@@ -266,15 +266,18 @@ class NanobanaClient2:
     Client for Nanobana 2 — native 2K/4K image generation.
 
     Uses the newer ``/generate-2`` endpoint (Gemini 3.1 Flash Image) which
-    accepts an ``imageSize`` parameter ("1K" | "2K" | "4K") and returns a
+    accepts a ``resolution`` parameter ("1K" | "2K" | "4K") and returns a
     natively high-resolution result without any post-processing upscale.
+
+    NOTE: The correct field name per official docs is ``resolution``,
+    NOT ``imageSize``. Using ``imageSize`` is silently ignored by the API.
 
     Pricing (via nanobananaapi.ai):
       - 1K  →  $0.04 / image
       - 2K  →  $0.06 / image
       - 4K  →  $0.09 / image
 
-    The image size is controlled by ``settings.NANOBANA_IMAGE_SIZE`` (default
+    The resolution is controlled by ``settings.NANOBANA_IMAGE_SIZE`` (default
     "2K").  Set ``NANOBANA_IMAGE_SIZE=4K`` in .env to go 4K, or "1K" to save
     credits during testing.
     """
@@ -295,12 +298,14 @@ class NanobanaClient2:
         active_prompt = prompt if prompt is not None else settings.NANOBANA_PROMPT
         image_size = settings.NANOBANA_IMAGE_SIZE  # "1K" | "2K" | "4K"
 
-        # Nanobana 2 / generate-2 payload — imageSize is the key resolution control.
+        # Nanobana 2 / generate-2 payload.
+        # CRITICAL: resolution field name is "resolution" (NOT "imageSize") per official docs:
+        # https://docs.nanobananaapi.ai/nanobanana-api/generate-image-2
         # imageUrls triggers image-to-image editing mode (jewellery placed in scene).
         payload = {
             "prompt": active_prompt,
             "imageUrls": [image_url],
-            "imageSize": image_size,
+            "resolution": image_size,  # "1K" | "2K" | "4K" — controls output resolution
             "callBackUrl": "https://api.nanobananaapi.ai/callback",
         }
 
