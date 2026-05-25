@@ -296,7 +296,7 @@ class NanobanaClient2:
     ) -> bytes:
         """Submit bg-removed image to Nanobana 2, poll for completion, return 2K image bytes."""
         active_prompt = prompt if prompt is not None else settings.NANOBANA_PROMPT
-        image_size = settings.NANOBANA_IMAGE_SIZE  # "1K" | "2K" | "4K"
+        image_size = (settings.NANOBANA_IMAGE_SIZE or "2K").upper().strip()  # "1K" | "2K" | "4K"
 
         # Nanobana 2 / generate-2 payload.
         # CRITICAL: resolution field name is "resolution" (NOT "imageSize") per official docs:
