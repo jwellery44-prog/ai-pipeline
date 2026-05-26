@@ -107,6 +107,17 @@ async def process_product_image(product: dict) -> list[str]:
 
     logger.info(f"{len(successful_urls)}/{variant_count} variants generated", extra={"product_id": product_id})
 
+    # Append Reve background-removed image as the last extra image.
+    # This gives the frontend a clean cutout alongside the styled variants.
+    try:
+        reve_permanent_url = await asyncio.to_thread(
+            upload_processed_image_variant, reve_output, product_id, variant_count + 1
+        )
+        successful_urls.append(reve_permanent_url)
+        logger.info("Reve cutout appended as extra image", extra={"product_id": product_id})
+    except Exception as exc:
+        logger.warning(f"Failed to upload Reve cutout — skipping: {exc}", extra={"product_id": product_id})
+
     # Step 6: Persist to database
     await update_product_generated_images(product_id, successful_urls, update_image_url=True)
 
