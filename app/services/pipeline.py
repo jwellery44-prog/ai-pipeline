@@ -59,8 +59,8 @@ async def process_product_image(product: dict) -> list[str]:
     product_id = product["id"]
     start = time.time()
 
-    variant_count = 1 if settings.TEST_MODE else 4
-    logger.info(f"Pipeline started ({'TEST — 1 variant' if settings.TEST_MODE else '4-variant mode'})", extra={"product_id": product_id})
+    variant_count = settings.IMAGE_GENERATION_COUNT
+    logger.info(f"Pipeline started ({variant_count}-variant mode)", extra={"product_id": product_id})
 
     # Step 1: Download raw image
     logger.info("Step 1/4 — downloading raw image", extra={"product_id": product_id})
@@ -91,8 +91,8 @@ async def process_product_image(product: dict) -> list[str]:
         extra={"product_id": product_id},
     )
 
-    # In TEST_MODE only 1 variant is generated to avoid burning API credits.
-    # Flip TEST_MODE=false in .env when ready to go full 4-variant.
+    # Generates IMAGE_GENERATION_COUNT variants to control API credit usage.
+    # Change IMAGE_GENERATION_COUNT in .env to adjust the number of generated images.
     active_prompts = prompts[:variant_count]
     results = await asyncio.gather(
         *[_generate_variant(reve_url, product_id, i + 1, p) for i, p in enumerate(active_prompts)]

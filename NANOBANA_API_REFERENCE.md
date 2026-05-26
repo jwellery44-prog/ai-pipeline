@@ -375,7 +375,7 @@ The pipeline generates 4 professional variants:
 
 **Why 18 credits was happening:**
 - The code was using `/generate-pro` endpoint (9 credits per image)
-- With TEST_MODE=false, 2 images were being processed = 2 × 9 = 18 credits
+- With IMAGE_GENERATION_COUNT=2, 2 images were being processed = 2 × 9 = 18 credits
 
 **Fix Applied:**
 1. Changed endpoint from `/generate-pro` to `/generate`
@@ -384,7 +384,7 @@ The pipeline generates 4 professional variants:
 
 **Expected Pricing After Fix:**
 - Per image: **~2 credits** ($0.02)
-- With TEST_MODE=false (4 variants): 4 × 2 = **~8 credits** total
+- With IMAGE_GENERATION_COUNT=4 (4 variants): 4 × 2 = **~8 credits** total
 
 ---
 

@@ -87,8 +87,8 @@ class Settings(BaseSettings):
     # App
     ENVIRONMENT: str = "development"
     LOG_LEVEL: str = "INFO"
-    # Set TEST_MODE=true in .env to generate only 1 variant (saves API credits during testing)
-    TEST_MODE: bool = False
+    # Number of image variants to generate (e.g., 1, 2, 3, 4). Set in .env.
+    IMAGE_GENERATION_COUNT: int = 4
 
     # Worker
     POLL_INTERVAL_SECONDS: int = 2
