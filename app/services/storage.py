@@ -116,7 +116,7 @@ def upload_processed_image(file_content: bytes, product_id: str) -> str:
 def upload_processed_image_variant(file_content: bytes, product_id: str, variant_index: int) -> str:
     """Upload one of the 4 generated image variants."""
     path = f"{settings.PROCESSED_STORAGE_FOLDER}/{product_id}_v{variant_index}.png"
-    logger.info(f"Uploading variant {variant_index}/4: {path}", extra={"product_id": product_id})
+    logger.info(f"Uploading variant {variant_index}: {path}", extra={"product_id": product_id})
     return upload_file_to_storage(
         file_content,
         settings.PROCESSED_BUCKET_NAME,

@@ -62,6 +62,19 @@ class Settings(BaseSettings):
     # AI Models
     REVE_API_KEY: str
     REVE_PROMPT: str = ""
+    # Toggle: when True, Reve uses a hardcoded bg-removal prompt instead of REVE_PROMPT.
+    # Set REVE_REMOVE_BACKGROUND=false in .env to revert to custom REVE_PROMPT behaviour.
+    REVE_REMOVE_BACKGROUND: bool = True
+    REVE_BG_REMOVAL_PROMPT: str = (
+        "Remove the background completely from this image. "
+        "Return ONLY the product/jewellery item on a perfectly clean, "
+        "pure transparent background with no shadows, no reflections, "
+        "no artifacts, and no residual background elements. "
+        "Preserve every fine detail of the product exactly as-is: "
+        "metal texture, gemstone brilliance, color accuracy, "
+        "engravings, and proportions. "
+        "Clean, precise cutout — professional product isolation."
+    )
     NANOBANA_API_KEY: str
     NANOBANA_PROMPT: str = ""  # only used in single-variant mode; ignored in 4-variant flow
     # Nanobana 2 endpoint: controls output resolution. Only "1K" is confirmed working.

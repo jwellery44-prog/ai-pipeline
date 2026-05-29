@@ -89,8 +89,19 @@ class ReveClient:
     async def remove_background(self, image_bytes: bytes) -> bytes:
         """Send image to Reve for background removal, return processed bytes."""
         base64_image = base64.b64encode(image_bytes).decode("utf-8")
+
+        # When REVE_REMOVE_BACKGROUND is enabled, use the dedicated bg-removal
+        # prompt instead of the generic REVE_PROMPT.  This produces a much
+        # cleaner cutout for Nanobana to work with downstream.
+        if settings.REVE_REMOVE_BACKGROUND:
+            active_prompt = settings.REVE_BG_REMOVAL_PROMPT
+            logger.info("Reve — using dedicated background-removal prompt (REVE_REMOVE_BACKGROUND=True)")
+        else:
+            active_prompt = settings.REVE_PROMPT
+            logger.info("Reve — using custom REVE_PROMPT (REVE_REMOVE_BACKGROUND=False)")
+
         json_data = {
-            "edit_instruction": settings.REVE_PROMPT,
+            "edit_instruction": active_prompt,
             "reference_image": base64_image,
             "version": "latest",
         }
