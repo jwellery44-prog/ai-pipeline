@@ -66,12 +66,18 @@ async def process_product_image(product: dict) -> list[str]:
     logger.info("Step 1/4 — downloading raw image", extra={"product_id": product_id})
     image_bytes = resolve_product_image(product)
 
-    # Step 2: Background removal
-    logger.info("Step 2/4 — removing background (Reve)", extra={"product_id": product_id})
-    reve_output = await reve_client.remove_background(image_bytes)
+    # Step 2: Background removal (conditional)
+    reve_was_used = False
+    if settings.REVE_REMOVE_BACKGROUND:
+        logger.info("REVE_REMOVE_BACKGROUND=True → calling Reve background removal", extra={"product_id": product_id})
+        reve_output = await reve_client.remove_background(image_bytes)
+        reve_was_used = True
+    else:
+        logger.info("REVE_REMOVE_BACKGROUND=False → Reve bypassed, using original image", extra={"product_id": product_id})
+        reve_output = image_bytes
 
-    # Step 3: Upload Reve result
-    logger.info("Step 3/4 — uploading Reve output", extra={"product_id": product_id})
+    # Step 3: Upload image for Nanobana to consume via URL
+    logger.info("Step 3/4 — uploading image to temp path", extra={"product_id": product_id})
     reve_url = await asyncio.to_thread(
         upload_file_to_storage,
         reve_output,
@@ -107,16 +113,19 @@ async def process_product_image(product: dict) -> list[str]:
 
     logger.info(f"{len(successful_urls)}/{variant_count} variants generated", extra={"product_id": product_id})
 
-    # Append Reve background-removed image as the last extra image.
-    # This gives the frontend a clean cutout alongside the styled variants.
-    try:
-        reve_permanent_url = await asyncio.to_thread(
-            upload_processed_image_variant, reve_output, product_id, variant_count + 1
-        )
-        successful_urls.append(reve_permanent_url)
-        logger.info("Reve cutout appended as extra image", extra={"product_id": product_id})
-    except Exception as exc:
-        logger.warning(f"Failed to upload Reve cutout — skipping: {exc}", extra={"product_id": product_id})
+    # Append Reve background-removed image as the last extra image
+    # (only when Reve actually ran — no point appending the original again).
+    if reve_was_used:
+        try:
+            reve_permanent_url = await asyncio.to_thread(
+                upload_processed_image_variant, reve_output, product_id, variant_count + 1
+            )
+            successful_urls.append(reve_permanent_url)
+            logger.info("Reve cutout appended as extra image", extra={"product_id": product_id})
+        except Exception as exc:
+            logger.warning(f"Failed to upload Reve cutout — skipping: {exc}", extra={"product_id": product_id})
+    else:
+        logger.info("Reve was bypassed — skipping cutout append", extra={"product_id": product_id})
 
     # Step 6: Persist to database
     await update_product_generated_images(product_id, successful_urls, update_image_url=True)
@@ -139,8 +148,12 @@ async def process_job(job: dict) -> None:
         logger.info("Step 1/4 — downloading image", extra={"job_id": job_id})
         image_bytes = await download_image(raw_url)
 
-        logger.info("Step 2/4 — removing background (Reve)", extra={"job_id": job_id})
-        reve_output = await reve_client.remove_background(image_bytes)
+        if settings.REVE_REMOVE_BACKGROUND:
+            logger.info("REVE_REMOVE_BACKGROUND=True → calling Reve background removal", extra={"job_id": job_id})
+            reve_output = await reve_client.remove_background(image_bytes)
+        else:
+            logger.info("REVE_REMOVE_BACKGROUND=False → Reve bypassed, using original image", extra={"job_id": job_id})
+            reve_output = image_bytes
 
         reve_url = upload_file_to_storage(
             reve_output, settings.PROCESSED_BUCKET_NAME, f"products/temp/reve_{job_id}.png"
