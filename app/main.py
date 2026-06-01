@@ -48,6 +48,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 ALLOWED_ORIGINS = [
     "http://localhost:3000",
+    "http://localhost:3001",
     "https://ai-pipeline-frontend.vercel.app",
     "https://jwellery.arpitray.in",
     "https://jewel-india-frontend-yws1.vercel.app",
@@ -155,9 +156,17 @@ async def process_image(
     request: Request,
     image_id: str,
     background_tasks: BackgroundTasks,
-    file: UploadFile = File(default=None),
 ):
     """Trigger AI processing for an existing product."""
+    # FastAPI's UploadFile = File(default=None) dependency does not allow empty POST requests 
+    # because it mandates a multipart/form-data header. We needed to remove the File dependency 
+    # from the parameter list and manually check request.form() only if the content-type is 
+    # multipart. This allows the same endpoint to gracefully handle both file-based re-uploads 
+    # and empty-body reprocessing triggers without throwing 422 validation errors.
+    file = None
+    if request.headers.get("content-type", "").startswith("multipart/form-data"):
+        form = await request.form()
+        file = form.get("file")
     # --- Validate image_id is a proper UUID (prevents path traversal) ---
     try:
         image_id = validate_product_id(image_id)
