@@ -2,7 +2,7 @@
 
 CREATE TABLE IF NOT EXISTS ai_generation_logs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  product_id TEXT REFERENCES images(id) ON DELETE SET NULL,
+  product_id TEXT REFERENCES products(id) ON DELETE SET NULL,
   wholesaler_id TEXT,
   triggered_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   completed_at TIMESTAMPTZ,
