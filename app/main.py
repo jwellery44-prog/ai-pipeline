@@ -317,9 +317,12 @@ async def get_upload_history_endpoint(
     request: Request,
     wholesaler_id: str | None = Query(None),
     limit: int = Query(20, ge=1, le=100),
+    start_date: str | None = Query(None),
 ):
     """Return recent pipeline execution logs with product titles and thumbnails."""
-    history = await get_upload_history(wholesaler_id=wholesaler_id, limit=limit)
+    history = await get_upload_history(
+        wholesaler_id=wholesaler_id, limit=limit, start_date=start_date
+    )
     return history
 
 

@@ -178,21 +178,22 @@ class TestDailyUploadLimit(unittest.IsolatedAsyncioTestCase):
                 "log_id": "log-uuid-1",
                 "product_id": "prod-uuid-1",
                 "trigger_source": "new_upload",
-                "status": "success",
+                "log_status": "success",
                 "triggered_at": "2026-06-22T00:15:44Z",
                 "completed_at": "2026-06-22T00:16:15Z",
                 "title": "Diamond Ring",
-                "image_url": "https://example.com/test.jpg"
+                "image_url": "https://example.com/test.jpg",
+                "is_reuploaded": False
             }
         ]
 
-        response = await self.client.get("/api/upload-history?wholesaler_id=wh-test&limit=10")
+        response = await self.client.get("/api/upload-history?wholesaler_id=wh-test&limit=10&start_date=2026-06-22T00:00:00Z")
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]["title"], "Diamond Ring")
-        self.assertEqual(data[0]["status"], "success")
-        mock_get_history.assert_called_once_with(wholesaler_id="wh-test", limit=10)
+        self.assertEqual(data[0]["is_reuploaded"], False)
+        mock_get_history.assert_called_once_with(wholesaler_id="wh-test", limit=10, start_date="2026-06-22T00:00:00Z")
 
     @patch("app.db.repository.get_supabase")
     async def test_get_upload_history_db(self, mock_get_supabase):
@@ -215,6 +216,7 @@ class TestDailyUploadLimit(unittest.IsolatedAsyncioTestCase):
         mock_query.order.return_value = mock_query
         mock_query.limit.return_value = mock_query
         mock_query.eq.return_value = mock_query
+        mock_query.gte.return_value = mock_query
         mock_query.execute.return_value = mock_response
 
         mock_supabase = MagicMock()
@@ -222,12 +224,14 @@ class TestDailyUploadLimit(unittest.IsolatedAsyncioTestCase):
         mock_get_supabase.return_value = mock_supabase
 
         from app.db.repository import get_upload_history
-        history = await get_upload_history(wholesaler_id="wh-test", limit=5)
+        history = await get_upload_history(wholesaler_id="wh-test", limit=5, start_date="2026-06-22T00:00:00Z")
         
         self.assertEqual(len(history), 1)
         self.assertEqual(history[0]["title"], "Diamond Ring")
         self.assertEqual(history[0]["image_url"], "https://example.com/test.jpg")
+        self.assertEqual(history[0]["is_reuploaded"], False)
         mock_supabase.table.assert_called_once_with("ai_generation_logs")
+        mock_query.gte.assert_called_once_with("triggered_at", "2026-06-22T00:00:00Z")
 
 if __name__ == "__main__":
     unittest.main()

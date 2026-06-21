@@ -290,10 +290,14 @@ async def update_pipeline_log_status(log_id: str, status: str) -> None:
         raise
 
 
-async def get_upload_history(wholesaler_id: str | None = None, limit: int = 20) -> list[dict]:
+async def get_upload_history(
+    wholesaler_id: str | None = None,
+    limit: int = 20,
+    start_date: str | None = None,
+) -> list[dict]:
     """Retrieve recent pipeline execution history for a wholesaler.
     
-    Returns log details joined with product title and image_url.
+    Returns log details joined with product data.
     """
     try:
         relation_name = settings.DB_TABLE_NAME
@@ -302,7 +306,7 @@ async def get_upload_history(wholesaler_id: str | None = None, limit: int = 20) 
             .table("ai_generation_logs")
             .select(
                 f"id, product_id, triggered_at, completed_at, status, trigger_source, "
-                f"products:{relation_name}!product_id ( title, image_url )"
+                f"products:{relation_name}!product_id ( * )"
             )
             .order("triggered_at", desc=True)
             .limit(limit)
@@ -310,6 +314,8 @@ async def get_upload_history(wholesaler_id: str | None = None, limit: int = 20) 
         
         if wholesaler_id:
             query = query.eq("wholesaler_id", wholesaler_id)
+        if start_date:
+            query = query.gte("triggered_at", start_date)
             
         resp = query.execute()
         
@@ -317,16 +323,16 @@ async def get_upload_history(wholesaler_id: str | None = None, limit: int = 20) 
         history = []
         for row in (resp.data or []):
             product_data = row.get("products") or {}
-            history.append({
-                "log_id": row["id"],
-                "product_id": row["product_id"],
-                "trigger_source": row["trigger_source"],
-                "status": row["status"],
-                "triggered_at": row["triggered_at"],
-                "completed_at": row["completed_at"],
-                "title": product_data.get("title", "Untitled"),
-                "image_url": product_data.get("image_url"),
-            })
+            if product_data:
+                history.append({
+                    **product_data,
+                    "log_id": row["id"],
+                    "trigger_source": row["trigger_source"],
+                    "log_status": row["status"],
+                    "triggered_at": row["triggered_at"],
+                    "completed_at": row["completed_at"],
+                    "is_reuploaded": row["trigger_source"] == "reprocess",
+                })
         return history
     except Exception as exc:
         logger.error("get_upload_history failed", exc_info=exc)
