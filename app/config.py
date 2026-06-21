@@ -102,6 +102,7 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     # Number of image variants to generate (e.g., 1, 2, 3, 4). Set in .env.
     IMAGE_GENERATION_COUNT: int = 4
+    DAILY_UPLOAD_LIMIT: int = 20
 
     # Worker
     POLL_INTERVAL_SECONDS: int = 2

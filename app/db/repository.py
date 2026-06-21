@@ -40,12 +40,15 @@ def get_supabase() -> Client:
         raise
 
 
-async def create_product(title: str = "", jewellery_type: str = "") -> dict:
+async def create_product(
+    title: str = "", jewellery_type: str = "", wholesaler_id: str | None = None
+) -> dict:
     """Insert a new product row and return it."""
     payload = {
         "created_at": datetime.now(timezone.utc).isoformat(),
         "title": title or "",
         "jewellery_type": jewellery_type or None,
+        "wholesaler_id": wholesaler_id or None,
     }
     try:
         resp = get_supabase().table(_TABLE).insert(payload).execute()
@@ -208,3 +211,50 @@ async def update_product_generated_images(
     except Exception as exc:
         logger.error("update_product_generated_images failed", extra={"product_id": product_id}, exc_info=exc)
         raise
+
+
+async def get_successful_upload_count_today(wholesaler_id: str | None = None) -> int:
+    """Count today's successful pipeline completions for a wholesaler.
+
+    A completion is 'successful' when generated_image_urls is populated
+    (non-null). Scoped to wholesaler_id if provided, otherwise counts globally.
+    """
+    now = datetime.now(timezone.utc)
+    start_of_today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    start_of_tomorrow = start_of_today + timedelta(days=1)
+
+    try:
+        query = (
+            get_supabase()
+            .table(_TABLE)
+            .select("id", count="exact")
+            .not_.is_("generated_image_urls", "null")
+            .gte("created_at", start_of_today.isoformat())
+            .lt("created_at", start_of_tomorrow.isoformat())
+        )
+
+        if wholesaler_id:
+            query = query.eq("wholesaler_id", wholesaler_id)
+
+        resp = query.execute()
+        return resp.count or 0
+
+    except Exception as exc:
+        logger.error("get_successful_upload_count_today failed", exc_info=exc)
+        return 0
+
+
+async def get_upload_usage(wholesaler_id: str | None = None) -> dict:
+    """Return upload usage summary for today."""
+    count = await get_successful_upload_count_today(wholesaler_id)
+    limit = settings.DAILY_UPLOAD_LIMIT
+
+    now = datetime.now(timezone.utc)
+    next_midnight = now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+
+    return {
+        "used": count,
+        "limit": limit,
+        "remaining": max(0, limit - count),
+        "resets_at": next_midnight.isoformat() + "Z",
+    }

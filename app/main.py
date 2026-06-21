@@ -1,7 +1,8 @@
 import asyncio
 from contextlib import asynccontextmanager
 
-from fastapi import BackgroundTasks, FastAPI, File, HTTPException, Request, UploadFile
+from datetime import datetime, timedelta, timezone
+from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError as PydanticValidationError
@@ -10,7 +11,13 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 from app.config import settings
-from app.db.repository import create_product, fetch_job_by_id, update_product_image_url
+from app.db.repository import (
+    create_product,
+    fetch_job_by_id,
+    update_product_image_url,
+    get_successful_upload_count_today,
+    get_upload_usage,
+)
 from app.logging import logger
 from app.services.pipeline import process_product_image
 from app.services.storage import upload_raw_image
@@ -103,8 +110,9 @@ async def process_upload(
     file: UploadFile = File(
         ..., description="Raw jewellery image (JPEG/PNG/WebP, max 10MB)"
     ),
-    title: str = "Untitled",
-    jewellery_type: str = "",
+    title: str = Form("Untitled"),
+    jewellery_type: str = Form(""),
+    wholesaler_id: str | None = Form(None),
 ):
     """Upload an image and start the AI pipeline."""
     # --- Input validation (prevents injection attacks) ---
@@ -129,7 +137,26 @@ async def process_upload(
             status_code=413, detail=f"File too large ({len(raw_bytes):,} bytes)"
         )
 
-    product = await create_product(title=title, jewellery_type=jewellery_type)
+    # --- Daily upload limit check ---
+    daily_count = await get_successful_upload_count_today(wholesaler_id)
+    if daily_count >= settings.DAILY_UPLOAD_LIMIT:
+        next_midnight = (
+            datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+            + timedelta(days=1)
+        )
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "message": f"Daily upload limit reached ({daily_count}/{settings.DAILY_UPLOAD_LIMIT}). Resets at midnight UTC.",
+                "used": daily_count,
+                "limit": settings.DAILY_UPLOAD_LIMIT,
+                "resets_at": next_midnight.isoformat() + "Z",
+            },
+        )
+
+    product = await create_product(
+        title=title, jewellery_type=jewellery_type, wholesaler_id=wholesaler_id
+    )
     product_id = product["id"]
 
     # Store the raw image first so the product row always has something
@@ -164,9 +191,11 @@ async def process_image(
     # multipart. This allows the same endpoint to gracefully handle both file-based re-uploads 
     # and empty-body reprocessing triggers without throwing 422 validation errors.
     file = None
+    wholesaler_id = None
     if request.headers.get("content-type", "").startswith("multipart/form-data"):
         form = await request.form()
         file = form.get("file")
+        wholesaler_id = form.get("wholesaler_id")
     # --- Validate image_id is a proper UUID (prevents path traversal) ---
     try:
         image_id = validate_product_id(image_id)
@@ -177,6 +206,33 @@ async def process_image(
     product = await fetch_job_by_id(image_id)
     if not product:
         raise HTTPException(status_code=404, detail=f"Product '{image_id}' not found")
+
+    # If wholesaler_id is provided in the form, update it in the database and the local product dict.
+    # Otherwise, fallback to the wholesaler_id already stored on the product row.
+    from app.db.repository import get_supabase
+    if wholesaler_id:
+        if product.get("wholesaler_id") != wholesaler_id:
+            get_supabase().table(settings.DB_TABLE_NAME).update({"wholesaler_id": wholesaler_id}).eq("id", image_id).execute()
+            product["wholesaler_id"] = wholesaler_id
+    else:
+        wholesaler_id = product.get("wholesaler_id")
+
+    # --- Daily upload limit check ---
+    daily_count = await get_successful_upload_count_today(wholesaler_id)
+    if daily_count >= settings.DAILY_UPLOAD_LIMIT:
+        next_midnight = (
+            datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+            + timedelta(days=1)
+        )
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "message": f"Daily upload limit reached ({daily_count}/{settings.DAILY_UPLOAD_LIMIT}). Resets at midnight UTC.",
+                "used": daily_count,
+                "limit": settings.DAILY_UPLOAD_LIMIT,
+                "resets_at": next_midnight.isoformat() + "Z",
+            },
+        )
 
     if file is not None:
         content_type = (file.content_type or "image/jpeg").split(";")[0].strip()
@@ -228,6 +284,17 @@ async def get_product(request: Request, product_id: str):
     if not product:
         raise HTTPException(status_code=404, detail=f"Product '{product_id}' not found")
     return product
+
+
+@app.get("/api/upload-usage")
+@limiter.limit("30/minute")
+async def get_upload_usage_endpoint(
+    request: Request,
+    wholesaler_id: str | None = Query(None),
+):
+    """Return today's upload usage and limit for a wholesaler."""
+    usage = await get_upload_usage(wholesaler_id)
+    return usage
 
 
 async def _run_product_pipeline(product: dict) -> None:
