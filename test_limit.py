@@ -171,5 +171,63 @@ class TestDailyUploadLimit(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 429)
         self.assertIn("Daily upload limit reached", response.json()["detail"]["message"])
 
+    @patch("app.main.get_upload_history")
+    async def test_upload_history_endpoint(self, mock_get_history):
+        mock_get_history.return_value = [
+            {
+                "log_id": "log-uuid-1",
+                "product_id": "prod-uuid-1",
+                "trigger_source": "new_upload",
+                "status": "success",
+                "triggered_at": "2026-06-22T00:15:44Z",
+                "completed_at": "2026-06-22T00:16:15Z",
+                "title": "Diamond Ring",
+                "image_url": "https://example.com/test.jpg"
+            }
+        ]
+
+        response = await self.client.get("/api/upload-history?wholesaler_id=wh-test&limit=10")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]["title"], "Diamond Ring")
+        self.assertEqual(data[0]["status"], "success")
+        mock_get_history.assert_called_once_with(wholesaler_id="wh-test", limit=10)
+
+    @patch("app.db.repository.get_supabase")
+    async def test_get_upload_history_db(self, mock_get_supabase):
+        mock_response = MagicMock()
+        mock_response.data = [{
+            "id": "log-uuid-1",
+            "product_id": "prod-uuid-1",
+            "triggered_at": "2026-06-22T00:15:44Z",
+            "completed_at": "2026-06-22T00:16:15Z",
+            "status": "success",
+            "trigger_source": "new_upload",
+            "products": {
+                "title": "Diamond Ring",
+                "image_url": "https://example.com/test.jpg"
+            }
+        }]
+
+        mock_query = MagicMock()
+        mock_query.select.return_value = mock_query
+        mock_query.order.return_value = mock_query
+        mock_query.limit.return_value = mock_query
+        mock_query.eq.return_value = mock_query
+        mock_query.execute.return_value = mock_response
+
+        mock_supabase = MagicMock()
+        mock_supabase.table.return_value = mock_query
+        mock_get_supabase.return_value = mock_supabase
+
+        from app.db.repository import get_upload_history
+        history = await get_upload_history(wholesaler_id="wh-test", limit=5)
+        
+        self.assertEqual(len(history), 1)
+        self.assertEqual(history[0]["title"], "Diamond Ring")
+        self.assertEqual(history[0]["image_url"], "https://example.com/test.jpg")
+        mock_supabase.table.assert_called_once_with("ai_generation_logs")
+
 if __name__ == "__main__":
     unittest.main()

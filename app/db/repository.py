@@ -288,3 +288,46 @@ async def update_pipeline_log_status(log_id: str, status: str) -> None:
     except Exception as exc:
         logger.error("update_pipeline_log_status failed", exc_info=exc)
         raise
+
+
+async def get_upload_history(wholesaler_id: str | None = None, limit: int = 20) -> list[dict]:
+    """Retrieve recent pipeline execution history for a wholesaler.
+    
+    Returns log details joined with product title and image_url.
+    """
+    try:
+        relation_name = settings.DB_TABLE_NAME
+        query = (
+            get_supabase()
+            .table("ai_generation_logs")
+            .select(
+                f"id, product_id, triggered_at, completed_at, status, trigger_source, "
+                f"products:{relation_name}!product_id ( title, image_url )"
+            )
+            .order("triggered_at", desc=True)
+            .limit(limit)
+        )
+        
+        if wholesaler_id:
+            query = query.eq("wholesaler_id", wholesaler_id)
+            
+        resp = query.execute()
+        
+        # Flatten the join results
+        history = []
+        for row in (resp.data or []):
+            product_data = row.get("products") or {}
+            history.append({
+                "log_id": row["id"],
+                "product_id": row["product_id"],
+                "trigger_source": row["trigger_source"],
+                "status": row["status"],
+                "triggered_at": row["triggered_at"],
+                "completed_at": row["completed_at"],
+                "title": product_data.get("title", "Untitled"),
+                "image_url": product_data.get("image_url"),
+            })
+        return history
+    except Exception as exc:
+        logger.error("get_upload_history failed", exc_info=exc)
+        return []

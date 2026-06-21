@@ -19,6 +19,7 @@ from app.db.repository import (
     get_upload_usage,
     log_pipeline_trigger,
     update_pipeline_log_status,
+    get_upload_history,
 )
 from app.logging import logger
 from app.services.pipeline import process_product_image
@@ -308,6 +309,18 @@ async def get_upload_usage_endpoint(
     """Return today's upload usage and limit for a wholesaler."""
     usage = await get_upload_usage(wholesaler_id)
     return usage
+
+
+@app.get("/api/upload-history")
+@limiter.limit("20/minute")
+async def get_upload_history_endpoint(
+    request: Request,
+    wholesaler_id: str | None = Query(None),
+    limit: int = Query(20, ge=1, le=100),
+):
+    """Return recent pipeline execution logs with product titles and thumbnails."""
+    history = await get_upload_history(wholesaler_id=wholesaler_id, limit=limit)
+    return history
 
 
 async def _run_product_pipeline(product: dict, log_id: str) -> None:
