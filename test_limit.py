@@ -5,7 +5,7 @@ import httpx
 # Mock Settings environment variables before importing app
 with patch.dict("os.environ", {
     "SUPABASE_URL": "https://example.supabase.co",
-    "SUPABASE_SERVICE_ROLE_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV4YW1wbGUiLCJyb2xlIjoic2VydmljZV9yb2xlIiwiaWF0IjoxNjAwMDAwMDAwLCJleHAiOjE5MDAwMDAwMDB9.fake-signature", # Valid format JWT to bypass client validation
+    "SUPABASE_SERVICE_ROLE_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV4YW1wbGUiLCJyb2xlIjoic2VydmljZV9yb2xlIiwiaWF0IjoxNjAwMDAwMDAwLCJleHAiOjE5MDAwMDAwMDB9.fake-signature",
     "REVE_API_KEY": "fake-reve-key",
     "NANOBANA_API_KEY": "fake-nanobana-key",
     "DAILY_UPLOAD_LIMIT": "2",  # Set limit to 2 for testing
@@ -30,13 +30,16 @@ class TestDailyUploadLimit(unittest.IsolatedAsyncioTestCase):
         mock_response = MagicMock()
         mock_response.count = 1
         
-        # Build chain mock
+        # Build self-returning query chain mock
         mock_query = MagicMock()
-        mock_query.execute.return_value = mock_response
+        mock_query.select.return_value = mock_query
         mock_query.eq.return_value = mock_query
+        mock_query.gte.return_value = mock_query
+        mock_query.lt.return_value = mock_query
+        mock_query.execute.return_value = mock_response
         
         mock_supabase = MagicMock()
-        mock_supabase.table.return_value.select.return_value.not_.is_.return_value.gte.return_value.lt.return_value = mock_query
+        mock_supabase.table.return_value = mock_query
         mock_get_supabase.return_value = mock_supabase
 
         # Test GET /api/upload-usage with no wholesaler_id
@@ -63,30 +66,42 @@ class TestDailyUploadLimit(unittest.IsolatedAsyncioTestCase):
         mock_count_response.count = 1
         
         # 2. Mock create_product / insert response
-        mock_insert_response = MagicMock()
-        mock_insert_response.data = [{"id": "fb6f6b55-ee5e-49b8-a6d1-817865cbb685", "title": "Test Ring"}]
+        mock_insert_product_resp = MagicMock()
+        mock_insert_product_resp.data = [{"id": "fb6f6b55-ee5e-49b8-a6d1-817865cbb685", "title": "Test Ring"}]
 
-        mock_supabase = MagicMock()
+        # 3. Mock log_pipeline_trigger / insert response
+        mock_insert_log_resp = MagicMock()
+        mock_insert_log_resp.data = [{"id": "fake-log-uuid-1"}]
+
+        # Build self-returning query chain mock
+        mock_query = MagicMock()
+        mock_query.select.return_value = mock_query
+        mock_query.eq.return_value = mock_query
+        mock_query.gte.return_value = mock_query
+        mock_query.lt.return_value = mock_query
+        mock_query.execute.return_value = mock_count_response
         
-        # Build daily count chain
-        mock_select = MagicMock()
-        mock_select.not_.is_.return_value.gte.return_value.lt.return_value = mock_select
-        mock_select.eq.return_value = mock_select
-        mock_select.execute.return_value = mock_count_response
-        
-        # Build insert chain
-        mock_insert = MagicMock()
-        mock_insert.execute.return_value = mock_insert_response
+        # Build insert mocks
+        mock_insert_product = MagicMock()
+        mock_insert_product.execute.return_value = mock_insert_product_resp
+
+        mock_insert_log = MagicMock()
+        mock_insert_log.execute.return_value = mock_insert_log_resp
         
         def table_side_effect(table_name):
             t = MagicMock()
-            t.select = MagicMock(return_value=mock_select)
-            t.insert = MagicMock(return_value=mock_insert)
-            t.update = MagicMock(return_value=t)
-            t.eq = MagicMock(return_value=t)
-            t.execute = MagicMock(return_value=MagicMock(data=[]))
+            if table_name == "images":
+                t.insert.return_value = mock_insert_product
+                t.select.return_value = mock_query
+            elif table_name == "ai_generation_logs":
+                t.insert.return_value = mock_insert_log
+                t.select.return_value = mock_query
+                t.update.return_value = t
+                t.eq.return_value = t
+                t.execute.return_value = MagicMock(data=[])
             return t
             
+        mock_supabase = MagicMock()
         mock_supabase.table.side_effect = table_side_effect
         mock_get_supabase.return_value = mock_supabase
         mock_upload_raw.return_value = "https://example.com/test.jpg"
@@ -126,22 +141,26 @@ class TestDailyUploadLimit(unittest.IsolatedAsyncioTestCase):
         mock_count = MagicMock()
         mock_count_exec = MagicMock()
         mock_count_exec.count = 2
-        mock_count.not_.is_.return_value.gte.return_value.lt.return_value.eq.return_value.execute.return_value = mock_count_exec
-        mock_count.not_.is_.return_value.gte.return_value.lt.return_value.execute.return_value = mock_count_exec
+        mock_count.eq.return_value.gte.return_value.lt.return_value.eq.return_value.execute.return_value = mock_count_exec
+        mock_count.eq.return_value.gte.return_value.lt.return_value.execute.return_value = mock_count_exec
+
+        # Mock log insert for trigger
+        mock_insert_log = MagicMock()
+        mock_insert_log.execute.return_value = MagicMock(data=[{"id": "fake-log-uuid-2"}])
 
         def table_side_effect(table_name):
             t = MagicMock()
-            
-            # Simple dispatcher depending on select args
-            def select_dispatcher(*args, **kwargs):
-                if len(args) > 0 and (args[0] == "*" or args[0] == "id" and "count" not in kwargs):
-                    return mock_select_job
-                return mock_count
-
-            t.select = MagicMock(side_effect=select_dispatcher)
-            t.update = MagicMock(return_value=t)
-            t.eq = MagicMock(return_value=t)
-            t.execute = MagicMock(return_value=MagicMock(data=[]))
+            if table_name == "images":
+                t.select = MagicMock(return_value=mock_select_job)
+                t.update = MagicMock(return_value=t)
+                t.eq = MagicMock(return_value=t)
+                t.execute = MagicMock(return_value=MagicMock(data=[]))
+            elif table_name == "ai_generation_logs":
+                t.select = MagicMock(return_value=mock_count)
+                t.insert.return_value = mock_insert_log
+                t.update = MagicMock(return_value=t)
+                t.eq = MagicMock(return_value=t)
+                t.execute = MagicMock(return_value=MagicMock(data=[]))
             return t
 
         mock_supabase.table.side_effect = table_side_effect

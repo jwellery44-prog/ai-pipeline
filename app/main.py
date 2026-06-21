@@ -17,6 +17,8 @@ from app.db.repository import (
     update_product_image_url,
     get_successful_upload_count_today,
     get_upload_usage,
+    log_pipeline_trigger,
+    update_pipeline_log_status,
 )
 from app.logging import logger
 from app.services.pipeline import process_product_image
@@ -82,7 +84,8 @@ async def ensure_cors_headers(request, call_next):
     # of the real error. This fallback makes sure the header is always there.
     try:
         response = await call_next(request)
-    except Exception:
+    except Exception as exc:
+        logger.exception("CORS middleware caught unhandled exception")
         response = JSONResponse({"detail": "Internal Server Error"}, status_code=500)
 
     if "Access-Control-Allow-Origin" not in response.headers:
@@ -159,6 +162,11 @@ async def process_upload(
     )
     product_id = product["id"]
 
+    # Log execution trigger
+    log_id = await log_pipeline_trigger(
+        product_id=product_id, wholesaler_id=wholesaler_id, trigger_source="new_upload"
+    )
+
     # Store the raw image first so the product row always has something
     # to show while the AI pipeline is still running.
     raw_url = upload_raw_image(raw_bytes, product_id, content_type)
@@ -168,7 +176,7 @@ async def process_upload(
     logger.info("Product created", extra={"product_id": product_id, "raw_url": raw_url})
 
     # Fire and forget — respond immediately, pipeline runs in background.
-    background_tasks.add_task(_run_product_pipeline, product)
+    background_tasks.add_task(_run_product_pipeline, product, log_id)
 
     return {
         "message": "Uploaded. Processing started in background.",
@@ -234,6 +242,11 @@ async def process_image(
             },
         )
 
+    # Log execution trigger
+    log_id = await log_pipeline_trigger(
+        product_id=image_id, wholesaler_id=wholesaler_id, trigger_source="reprocess"
+    )
+
     if file is not None:
         content_type = (file.content_type or "image/jpeg").split(";")[0].strip()
         if content_type not in settings.ALLOWED_MIME_TYPES:
@@ -256,7 +269,7 @@ async def process_image(
             status_code=422, detail=f"Product '{image_id}' has no image"
         )
 
-    background_tasks.add_task(_run_product_pipeline, product)
+    background_tasks.add_task(_run_product_pipeline, product, log_id)
     logger.info("Processing queued", extra={"product_id": image_id})
 
     return {
@@ -297,7 +310,7 @@ async def get_upload_usage_endpoint(
     return usage
 
 
-async def _run_product_pipeline(product: dict) -> None:
+async def _run_product_pipeline(product: dict, log_id: str) -> None:
     """Background task wrapper for the pipeline."""
     product_id = product["id"]
     try:
@@ -306,7 +319,9 @@ async def _run_product_pipeline(product: dict) -> None:
             f"Pipeline finished — {len(generated_urls)} variant(s)",
             extra={"product_id": product_id},
         )
+        await update_pipeline_log_status(log_id, "success")
     except Exception as exc:
         logger.error(
             "Product pipeline failed", extra={"product_id": product_id}, exc_info=exc
         )
+        await update_pipeline_log_status(log_id, "failed")

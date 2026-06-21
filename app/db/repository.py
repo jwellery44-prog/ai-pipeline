@@ -214,10 +214,11 @@ async def update_product_generated_images(
 
 
 async def get_successful_upload_count_today(wholesaler_id: str | None = None) -> int:
-    """Count today's successful pipeline completions for a wholesaler.
-
-    A completion is 'successful' when generated_image_urls is populated
-    (non-null). Scoped to wholesaler_id if provided, otherwise counts globally.
+    """Count today's successful pipeline EXECUTIONS (not distinct products) for a wholesaler.
+    
+    This correctly counts re-uploads/reprocessing as separate events, since each
+    pipeline run gets its own log row regardless of whether it created a new
+    product or reprocessed an existing one.
     """
     now = datetime.now(timezone.utc)
     start_of_today = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -226,19 +227,17 @@ async def get_successful_upload_count_today(wholesaler_id: str | None = None) ->
     try:
         query = (
             get_supabase()
-            .table(_TABLE)
+            .table("ai_generation_logs")
             .select("id", count="exact")
-            .not_.is_("generated_image_urls", "null")
-            .gte("created_at", start_of_today.isoformat())
-            .lt("created_at", start_of_tomorrow.isoformat())
+            .eq("status", "success")
+            .gte("triggered_at", start_of_today.isoformat())
+            .lt("triggered_at", start_of_tomorrow.isoformat())
         )
-
         if wholesaler_id:
             query = query.eq("wholesaler_id", wholesaler_id)
 
         resp = query.execute()
         return resp.count or 0
-
     except Exception as exc:
         logger.error("get_successful_upload_count_today failed", exc_info=exc)
         return 0
@@ -258,3 +257,34 @@ async def get_upload_usage(wholesaler_id: str | None = None) -> dict:
         "remaining": max(0, limit - count),
         "resets_at": next_midnight.isoformat() + "Z",
     }
+
+
+async def log_pipeline_trigger(
+    product_id: str, wholesaler_id: str | None, trigger_source: str
+) -> str:
+    """Insert a 'pending' log row when the pipeline is triggered. Returns the log row id."""
+    payload = {
+        "product_id": product_id,
+        "wholesaler_id": wholesaler_id,
+        "trigger_source": trigger_source,  # 'new_upload' or 'reprocess'
+        "status": "pending",
+        "triggered_at": datetime.now(timezone.utc).isoformat(),
+    }
+    try:
+        resp = get_supabase().table("ai_generation_logs").insert(payload).execute()
+        return resp.data[0]["id"]
+    except Exception as exc:
+        logger.error("log_pipeline_trigger failed", exc_info=exc)
+        raise
+
+
+async def update_pipeline_log_status(log_id: str, status: str) -> None:
+    """Update a log row's status to 'success' or 'failed' when the pipeline completes."""
+    try:
+        get_supabase().table("ai_generation_logs").update({
+            "status": status,
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+        }).eq("id", log_id).execute()
+    except Exception as exc:
+        logger.error("update_pipeline_log_status failed", exc_info=exc)
+        raise
