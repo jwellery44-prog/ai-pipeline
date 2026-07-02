@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import time
 from typing import Optional
+
+from PIL import Image
 
 from app.config import build_variant_prompts, settings
 from app.db.repository import update_job_status, update_product_generated_images
@@ -15,6 +18,50 @@ from app.services.storage import (
     upload_processed_image,
     upload_processed_image_variant,
 )
+
+
+def adjust_aspect_ratio(image_bytes: bytes, target_ratio: str) -> bytes:
+    """Pad the input image to a specific aspect ratio (e.g. '1:1' square)."""
+    if not target_ratio or target_ratio == "none":
+        return image_bytes
+
+    try:
+        img = Image.open(io.BytesIO(image_bytes))
+        orig_format = img.format or "PNG"
+
+        # Convert palette/grayscale images to RGBA to preserve transparency
+        if img.mode not in ("RGB", "RGBA"):
+            img = img.convert("RGBA")
+
+        width, height = img.size
+
+        if target_ratio == "1:1":
+            max_dim = max(width, height)
+            # Create a transparent background for PNG/RGBA, or white for RGB
+            bg_color = (255, 255, 255, 0) if img.mode == "RGBA" else (255, 255, 255)
+            new_img = Image.new(img.mode, (max_dim, max_dim), bg_color)
+            # Center the original image on the new canvas
+            offset = ((max_dim - width) // 2, (max_dim - height) // 2)
+            new_img.paste(img, offset)
+
+            # If saving as JPEG, mode must be RGB (cannot be RGBA)
+            save_format = orig_format
+            if save_format.upper() in ("JPEG", "JPG") and new_img.mode == "RGBA":
+                # Convert RGBA to RGB on a white background
+                rgb_img = Image.new("RGB", new_img.size, (255, 255, 255))
+                rgb_img.paste(new_img, mask=new_img.split()[3])  # paste using alpha channel as mask
+                new_img = rgb_img
+                save_format = "JPEG"
+
+            out_bytes = io.BytesIO()
+            new_img.save(out_bytes, format=save_format)
+            return out_bytes.getvalue()
+
+    except Exception as exc:
+        logger.warning(f"Failed to adjust aspect ratio: {exc}")
+
+    return image_bytes
+
 
 async def _generate_variant(
     reve_url: str,
@@ -65,6 +112,11 @@ async def process_product_image(product: dict) -> list[str]:
     # Step 1: Download raw image
     logger.info("Step 1/4 — downloading raw image", extra={"product_id": product_id})
     image_bytes = resolve_product_image(product)
+
+    # Adjust aspect ratio if configured
+    if settings.TARGET_ASPECT_RATIO and settings.TARGET_ASPECT_RATIO != "none":
+        image_bytes = adjust_aspect_ratio(image_bytes, settings.TARGET_ASPECT_RATIO)
+
 
     # Step 2: Background removal (conditional)
     reve_was_used = False
@@ -147,6 +199,11 @@ async def process_job(job: dict) -> None:
     try:
         logger.info("Step 1/4 — downloading image", extra={"job_id": job_id})
         image_bytes = await download_image(raw_url)
+
+        # Adjust aspect ratio if configured
+        if settings.TARGET_ASPECT_RATIO and settings.TARGET_ASPECT_RATIO != "none":
+            image_bytes = adjust_aspect_ratio(image_bytes, settings.TARGET_ASPECT_RATIO)
+
 
         if settings.REVE_REMOVE_BACKGROUND:
             logger.info("REVE_REMOVE_BACKGROUND=True → calling Reve background removal", extra={"job_id": job_id})

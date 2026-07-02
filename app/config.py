@@ -80,6 +80,8 @@ class Settings(BaseSettings):
     # Nanobana 2 endpoint: controls output resolution. Only "1K" is confirmed working.
     # "2K" and "4K" return 422 "image resolution is wrong" from the API.
     NANOBANA_IMAGE_SIZE: str = "1K"
+    TARGET_ASPECT_RATIO: str = "none"
+
 
     # Variant prompts (can be overridden via env vars)
     NANOBANA_VARIANT_PROMPT_1: str = VARIANT_PROMPTS[0]
