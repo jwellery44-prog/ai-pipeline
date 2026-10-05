@@ -30,6 +30,7 @@ from app.validation import (
     validate_product_input,
 )
 from app.worker import worker_loop
+from app.routers.catalogue_search import router as catalogue_search_router
 
 # Rate limiter keyed on client IP. Each route sets its own cap;
 # the default here is a fallback for any route we forget to decorate.
@@ -41,7 +42,10 @@ async def lifespan(app: FastAPI):
     # Start the background worker as soon as the server is ready.
     # On shutdown, cancel it cleanly instead of letting it hang.
     task = asyncio.create_task(worker_loop())
+    from app.routers.catalogue_search import startup as start_image_search, shutdown as stop_image_search
+    await start_image_search()
     yield
+    await stop_image_search()
     task.cancel()
     try:
         await task
@@ -50,6 +54,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+app.include_router(catalogue_search_router)
 
 app.state.limiter = limiter
 # slowapi needs this handler registered so it returns a proper 429 JSON body

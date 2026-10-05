@@ -36,4 +36,7 @@ typing-inspection==0.4.2
 typing_extensions==4.15.0
 uvicorn==0.27.1
 websockets==15.0.1
-Pillow==10.2.0
+Pillow==10.2.0
+# Pre-indexed CPU image retrieval
+onnxruntime==1.23.2
+numpy==2.2.6

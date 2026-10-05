@@ -34,6 +34,8 @@ ENV PYTHONUNBUFFERED=1 \
     PORT=8000
 
 USER appuser
+ENV IMAGE_SEARCH_MODEL_PATH=/home/appuser/.cache/jewel-image-search/vision.onnx
+RUN python -m app.services.catalogue_search
 EXPOSE 8000
 
 # Lightweight health check using stdlib urllib — no extra binaries needed.
