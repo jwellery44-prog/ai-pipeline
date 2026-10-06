@@ -31,6 +31,8 @@ from app.validation import (
 )
 from app.worker import worker_loop
 from app.routers.catalogue_search import router as catalogue_search_router
+from app.routers.manufacturing import router as manufacturing_router
+from app.services.manufacturing_scheduler import scheduler as manufacturing_scheduler
 
 # Rate limiter keyed on client IP. Each route sets its own cap;
 # the default here is a fallback for any route we forget to decorate.
@@ -44,7 +46,9 @@ async def lifespan(app: FastAPI):
     task = asyncio.create_task(worker_loop())
     from app.routers.catalogue_search import startup as start_image_search, shutdown as stop_image_search
     await start_image_search()
+    await manufacturing_scheduler.start()
     yield
+    await manufacturing_scheduler.stop()
     await stop_image_search()
     task.cancel()
     try:
@@ -55,6 +59,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 app.include_router(catalogue_search_router)
+app.include_router(manufacturing_router)
 
 app.state.limiter = limiter
 # slowapi needs this handler registered so it returns a proper 429 JSON body

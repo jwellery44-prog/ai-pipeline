@@ -123,6 +123,13 @@ class Settings(BaseSettings):
     ALLOWED_MIME_TYPES: list[str] = ["image/jpeg", "image/png", "image/webp"]
     MAX_FILE_SIZE_BYTES: int = 10 * 1024 * 1024  # 10 MB
 
+    # Manufacturing notification credentials (server-only).
+    APNS_KEY_ID: str = ""
+    APNS_TEAM_ID: str = ""
+    APNS_BUNDLE_ID: str = "com.jewelindia.app"
+    APNS_PRIVATE_KEY: str = ""
+    APNS_ENVIRONMENT: str = "development"
+
     class Config:
         env_file = ".env"
         extra = "ignore"  # silently drop any unknown keys from .env

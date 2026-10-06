@@ -40,3 +40,5 @@ Pillow==10.2.0
 # Pre-indexed CPU image retrieval
 onnxruntime==1.23.2
 numpy==2.2.6
+
+cryptography>=43.0.0
